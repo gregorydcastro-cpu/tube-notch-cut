@@ -111,7 +111,7 @@
 <body>
   <header>
     <h1>Tube Notch/cut</h1>
-    <p>Download this file and open it in Chrome or Edge. Saddle cuddles a parent pipe. Square cutoff chops the tube off straight and does not follow another pipe. Y zero is at End 1 (far end) — jog there, touch off, cut End 1 first, then Y runs negative toward the chuck for End 2.</p>
+    <p>Download this file and open it in Chrome or Edge. Zero on the far end (End 1): jog there, touch off, seam dot is A0 and Y0. End 2 is negative Y at the chuck. Cut the far end first so the pipe does not drop. Each end is independently a saddle (wrap onto a parent pipe) or a flush square cut. No lead-in or lead-out — pierce on the path.</p>
     <div class="btns">
       <button type="button" id="btnGenTop">Generate G-code</button>
       <button type="button" class="secondary" id="btnCopyTop">Copy</button>
@@ -159,7 +159,7 @@
       <label class="check"><input id="bothEnds" type="checkbox" /> Both ends the same?</label>
       <label class="check"><input id="mmOut" type="checkbox" checked /> G-code in millimeters</label>
 
-      <h2>End 1 — far end (touch-off end, cut first)</h2>
+      <h2>End 1 — far / free end (zero here, cut first)</h2>
       <div class="end-card">
         <h3 id="h1">End 1</h3>
         <div class="field">
@@ -193,7 +193,7 @@
         </div>
       </div>
 
-      <h2>End 2 — chuck end (cut last, good piece stays in chuck)</h2>
+      <h2>End 2 — chuck end (negative Y, cut last so the good piece stays in the chuck)</h2>
       <div class="end-card">
         <h3 id="h2">End 2</h3>
         <div class="field">
@@ -234,29 +234,42 @@
         </div>
         <div class="field">
           <label for="feed">Feed F (mm/min)</label>
-          <input id="feed" type="number" step="1" value="800" />
+          <input id="feed" type="number" step="1" value="385" />
         </div>
       </div>
       <div class="row">
         <div class="field">
           <label for="dwell">Pierce dwell G4 P</label>
-          <input id="dwell" type="number" step="1" value="500" />
+          <input id="dwell" type="number" step="1" value="200" />
         </div>
         <div class="field">
           <label for="zeroMode">Y zero</label>
           <select id="zeroMode">
-            <option value="end1" selected>End 1 (far end) at Y0, End 2 negative</option>
-            <option value="firstcut">First cut starts at Y0</option>
+            <option value="end1" selected>End 1 far end at Y0, End 2 negative Y at chuck</option>
+            <option value="firstcut">Shift so End 1 pierce starts at Y0</option>
           </select>
+          <div class="hint">Zero on the far end. End 2 is negative Y at the chuck. Cut far end first.</div>
         </div>
       </div>
       <div class="row">
         <div class="field">
-          <label for="mOn">Torch / laser ON</label>
+          <label for="tool">Tool (MASSO plasma)</label>
+          <input id="tool" type="text" value="T112" />
+          <div class="hint">T112 plasma. Do not use T111.</div>
+        </div>
+        <div class="field">
+          <label for="retractZ">Retract Z</label>
+          <input id="retractZ" type="number" step="0.1" value="30" />
+          <div class="hint">G0 Z after each end (mm when G21).</div>
+        </div>
+      </div>
+      <div class="row">
+        <div class="field">
+          <label for="mOn">Torch ON</label>
           <input id="mOn" type="text" value="M3" />
         </div>
         <div class="field">
-          <label for="mOff">Torch / laser OFF</label>
+          <label for="mOff">Torch OFF</label>
           <input id="mOff" type="text" value="M5" />
         </div>
       </div>
@@ -282,7 +295,7 @@
         <div class="stat"><span>End 1 / End 2</span><b id="sD1">—</b></div>
       </div>
       <canvas id="preview" width="900" height="220"></canvas>
-      <div class="legend">Orange = end 1 (far end) · yellow = end 2 (chuck end). A flush cut is a flat line. A saddle is the fishmouth curve. Y0 is at End 1; End 2 sits at negative Y.</div>
+      <div class="legend">Orange = End 1 far/free end (Y0, cut first) · yellow = End 2 chuck (negative Y, cut last). Zero on the far end. A flush cut is a flat line. A saddle is the fishmouth curve.</div>
       <h2>G-code</h2>
       <textarea id="gcode" spellcheck="false"></textarea>
     </section>
@@ -415,6 +428,8 @@
         feed: num("feed"),
         dwell: Math.round(num("dwell") || 0),
         zeroMode: $("zeroMode").value,
+        tool: $("tool").value.trim() || "T112",
+        retractZ: num("retractZ"),
         mOn: $("mOn").value.trim() || "M3",
         mOff: $("mOff").value.trim() || "M5",
         notes: $("notes").value.trim()
@@ -444,7 +459,7 @@
       }
       if (errors.length) return { errors };
 
-      const Rc = (p.childOdIn / 2) * IN;
+      const Rc = (p.childOdIn / 2 - p.wallIn) * IN;  // use ID so the notch seats on the inner wall against the parent OD
       const Rp1 = (p.p1In / 2) * IN;
       const Rp2 = (p.p2In / 2) * IN;
       const wall = p.wallIn * IN;
@@ -476,12 +491,13 @@
         return { errors };
       }
 
-      // Y zero at End 1 (far end). End 1 sits at the high positive Y, End 2 at negative Y near the chuck.
-      // First cut runs at End 1, then Y moves negative toward the chuck for End 2.
-      let y1 = off1.map((o) => span - o);
-      let y2 = off2.map((o) => -o);
+      // Y0 is End 1, the far/free end. Operator zeros there (seam = A0, Y0).
+      // Chuck is End 2 at negative Y. Saddle offset recedes into the tube.
+      // End 1: y = -offset (toward chuck). End 2: y = -span + offset (toward far end).
+      let y1 = off1.map((o) => -o);
+      let y2 = off2.map((o) => -span + o);
       if (p.zeroMode === "firstcut") {
-        const shift = Math.min.apply(null, y1);
+        const shift = y1[0];
         y1 = y1.map((y) => y - shift);
         y2 = y2.map((y) => y - shift);
       }
@@ -515,33 +531,39 @@
       push("(G-code units: " + unit + ")");
       push("(Degrees of steps: " + step + ")");
       push("(Notes: " + (p.notes || "none") + ")");
-      push("(Machine: Y along tube, A rotary degrees, Z fixed)");
-      push("(Y0: " + (p.zeroMode === "firstcut" ? "first cut starts at Y0" : "End 1 far end at Y0, End 2 negative toward chuck") + ")");
-      push("(Cut order: End 1 first at far end, then End 2 toward chuck — good piece stays in chuck)");
+      push("(Machine: MASSO G3 plasma rotary — A rotary degrees, Y along tube)");
+      push("(Y0: " + (p.zeroMode === "firstcut"
+        ? "End 1 pierce shifted to Y0. End 2 still negative Y at the chuck."
+        : "End 1 far/free end. Zero there. End 2 is negative Y at the chuck.") + ")");
+      push("(Cut order: End 1 far first, then End 2 toward chuck so the pipe does not drop)");
+      push("(Pierce on path. No lead-in or lead-out.)");
       push("(Longest finished length: " + fmt(toOut(longest), dec) + " " + unit + ")");
       push("(Shortest finished length: " + fmt(toOut(shortest), dec) + " " + unit + ")");
-      push("G21");
-      if (!p.mm) lines[lines.length - 1] = "G20";
-      push("G90 G94 G17");
-      push("G40 G49");
+      push(p.mm ? "G21" : "G20");
+      push("G90 G94");
+      const toolWord = /^T/i.test(p.tool) ? p.tool.toUpperCase() : ("T" + p.tool);
+      push(toolWord);
       push("F" + (p.mm ? Math.round(p.feed) : fmt(p.feed / IN, 2)));
+      const retractMm = Number.isFinite(p.retractZ) ? p.retractZ : 30;
+      const retractOut = p.mm ? retractMm : retractMm / IN;
+      const retractDec = p.mm ? 3 : 4;
+      const retractWord = "G0 Z" + fmt(retractOut, retractDec);
 
       function cutEnd(label, angArr, yArr, kind) {
         push("");
         push("(" + label + " — " + kindLabel(kind) + (kind === "flush" || kind === "wrap" ? ", full 360 closed loop" : ", partial arc") + ")");
-        push("G00 A" + fmt(angArr[0], 3) + " " + axisY(yArr[0]));
+        push("G0 A" + fmt(angArr[0], 3) + " " + axisY(yArr[0]));
         push(p.mOn);
         if (p.dwell > 0) push("G04 P" + p.dwell);
-        push("G01 A" + fmt(angArr[0], 3) + " " + axisY(yArr[0]));
         for (let i = 1; i < angArr.length; i++) {
           push("G01 A" + fmt(angArr[i], 3) + " " + axisY(yArr[i]));
         }
         push(p.mOff);
+        push(retractWord);
       }
       cutEnd("END 1", a1, y1, prof1.kind);
       cutEnd("END 2", a2, y2, prof2.kind);
       push("");
-      push("G00 A0.000");
       push("M30");
       push("%");
 
@@ -656,7 +678,7 @@
     $("btnGenTop").addEventListener("click", generate);
     $("btnCopyTop").addEventListener("click", copyGcode);
     $("btnDlTop").addEventListener("click", downloadNc);
-    ["childOd","wall","p1","p2","span","angle1","angle2","type1","type2","cut1","cut2","lengthMode","stepDeg","bothEnds","mmOut","zeroMode","feed","dwell","cutName","notes"].forEach((id) => {
+    ["childOd","wall","p1","p2","span","angle1","angle2","type1","type2","cut1","cut2","lengthMode","stepDeg","bothEnds","mmOut","zeroMode","feed","dwell","tool","retractZ","cutName","notes"].forEach((id) => {
       $(id).addEventListener("input", () => { syncEnds(); updateMmLabels(); });
       $(id).addEventListener("change", generate);
     });
