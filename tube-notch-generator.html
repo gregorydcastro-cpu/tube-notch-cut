@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Tube Notch/cut</title>
+  <style>
+    :root {
+      --bg: #121418;
+      --panel: #1b1f27;
+      --panel-2: #232833;
+      --line: #3a4150;
+      --text: #e8e4db;
+      --muted: #9aa3b2;
+      --accent: #e08a2c;
+      --accent-2: #f3b15a;
+      --good: #7dbe6a;
+      --bad: #d46a6a;
+      --mono: "IBM Plex Mono", "Consolas", "Menlo", monospace;
+      --sans: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font-family: var(--sans); }
+    body { min-height: 100vh; }
+    header {
+      padding: 16px 24px 14px;
+      border-bottom: 1px solid var(--line);
+      background: linear-gradient(180deg, #1e232d, #15181e);
+      position: sticky;
+      top: 0;
+      z-index: 5;
+    }
+    header h1 { margin: 0 0 6px; font-size: 22px; letter-spacing: 0.04em; text-transform: uppercase; }
+    header p { margin: 0 0 10px; color: var(--muted); font-size: 13px; }
+    header .btns { margin: 0; }
+    .wrap { display: grid; grid-template-columns: 420px 1fr; min-height: calc(100vh - 78px); }
+    @media (max-width: 980px) { .wrap { grid-template-columns: 1fr; } }
+    .form-col { padding: 18px 20px 40px; border-right: 1px solid var(--line); background: var(--panel); }
+    .out-col { padding: 18px 20px 40px; }
+    h2 { margin: 18px 0 10px; font-size: 13px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent-2); }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+    input[type="text"], input[type="number"], select, textarea {
+      width: 100%;
+      background: #101318;
+      color: var(--text);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 8px 10px;
+      font-size: 14px;
+      font-family: var(--mono);
+    }
+    textarea { min-height: 64px; resize: vertical; }
+    input:focus, select:focus, textarea:focus { outline: 1px solid var(--accent); border-color: var(--accent); }
+    .field { margin-bottom: 10px; }
+    .check { display: flex; align-items: center; gap: 8px; margin: 10px 0; color: var(--text); font-size: 14px; }
+    .hint { font-size: 11px; color: var(--muted); margin-top: 3px; }
+    .mm { color: var(--accent-2); font-family: var(--mono); font-size: 11px; }
+    .btns { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 8px; }
+    button {
+      background: var(--accent);
+      color: #1a1208;
+      border: 0;
+      border-radius: 6px;
+      padding: 10px 14px;
+      font-weight: 700;
+      cursor: pointer;
+      font-size: 13px;
+    }
+    button.secondary { background: var(--panel-2); color: var(--text); border: 1px solid var(--line); }
+    button:hover { filter: brightness(1.08); }
+    .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
+    .stat { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+    .stat b { display: block; font-size: 16px; font-family: var(--mono); }
+    .stat span { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+    canvas { width: 100%; height: 220px; background: #0d1016; border: 1px solid var(--line); border-radius: 8px; }
+    #gcode {
+      width: 100%;
+      min-height: 420px;
+      background: #0d1016;
+      color: #d7e0c8;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+      font-family: var(--mono);
+      font-size: 12px;
+      line-height: 1.35;
+      white-space: pre;
+    }
+    .err { color: var(--bad); font-size: 13px; min-height: 18px; }
+    .ok { color: var(--good); }
+    .legend { color: var(--muted); font-size: 12px; margin: 6px 0 14px; }
+    .end-card {
+      background: var(--panel-2);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px 10px 4px;
+      margin-bottom: 10px;
+    }
+    .end-card h3 {
+      margin: 0 0 8px;
+      font-size: 12px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--text);
+    }
+    input:disabled, select:disabled { opacity: 0.45; }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Tube Notch/cut</h1>
+    <p>Download this file and open it in Chrome or Edge. Saddle cuddles a parent pipe. Square cutoff chops the tube off straight and does not follow another pipe. Y zero is at End 1 (far end) — jog there, touch off, cut End 1 first, then Y runs negative toward the chuck for End 2.</p>
+    <div class="btns">
+      <button type="button" id="btnGenTop">Generate G-code</button>
+      <button type="button" class="secondary" id="btnCopyTop">Copy</button>
+      <button type="button" class="secondary" id="btnDlTop">Download .nc</button>
+    </div>
+  </header>
+  <div class="wrap">
+    <section class="form-col">
+      <h2>Name of cut</h2>
+      <div class="field">
+        <label for="cutName">Name</label>
+        <input id="cutName" type="text" value="tube" />
+      </div>
+
+      <h2>Tube I'm cutting</h2>
+      <div class="row">
+        <div class="field">
+          <label for="childOd">OD (inches)</label>
+          <input id="childOd" type="number" step="0.001" value="1.5" />
+          <div class="hint"><span id="childOdMm" class="mm"></span></div>
+        </div>
+        <div class="field">
+          <label for="wall">Wall thickness (inches)</label>
+          <input id="wall" type="number" step="0.001" value="0.083" />
+          <div class="hint"><span id="wallMm" class="mm"></span></div>
+        </div>
+      </div>
+
+      <h2>Length</h2>
+      <div class="row">
+        <div class="field">
+          <label for="span">Tube length (inches)</label>
+          <input id="span" type="number" step="0.001" value="24" />
+          <div class="hint"><span id="spanMm" class="mm"></span></div>
+        </div>
+        <div class="field">
+          <label for="lengthMode">That length is</label>
+          <select id="lengthMode">
+            <option value="cc" selected>Reference to reference</option>
+            <option value="longest">Finished longest</option>
+            <option value="crown">Finished shortest</option>
+          </select>
+        </div>
+      </div>
+      <label class="check"><input id="bothEnds" type="checkbox" /> Both ends the same?</label>
+      <label class="check"><input id="mmOut" type="checkbox" checked /> G-code in millimeters</label>
+
+      <h2>End 1 — far end (touch-off end, cut first)</h2>
+      <div class="end-card">
+        <h3 id="h1">End 1</h3>
+        <div class="field">
+          <label for="type1">This end is</label>
+          <select id="type1">
+            <option value="saddle" selected>Saddle / cope — cuddle a parent pipe</option>
+            <option value="flush">Square cutoff — chop the end off, no pipe</option>
+          </select>
+        </div>
+        <div id="saddle1">
+          <div class="row">
+            <div class="field">
+              <label for="p1">Parent OD (inches)</label>
+              <input id="p1" type="number" step="0.001" value="1.25" />
+              <div class="hint"><span id="p1Mm" class="mm"></span></div>
+            </div>
+            <div class="field">
+              <label for="angle1">Saddle angle (degrees)</label>
+              <input id="angle1" type="number" step="0.1" value="90" />
+            </div>
+          </div>
+          <div class="field">
+            <label for="cut1">Saddle style</label>
+            <select id="cut1">
+              <option value="auto" selected>Auto</option>
+              <option value="stand">Stand-on fishmouth (bottom only)</option>
+              <option value="wrap">Full 360 wrap</option>
+            </select>
+            <div class="hint">Auto uses stand-on when the parent is smaller than the tube.</div>
+          </div>
+        </div>
+      </div>
+
+      <h2>End 2 — chuck end (cut last, good piece stays in chuck)</h2>
+      <div class="end-card">
+        <h3 id="h2">End 2</h3>
+        <div class="field">
+          <label for="type2">This end is</label>
+          <select id="type2">
+            <option value="flush" selected>Square cutoff — chop the end off, no pipe</option>
+            <option value="saddle">Saddle / cope — cuddle a parent pipe</option>
+          </select>
+        </div>
+        <div id="saddle2">
+          <div class="row">
+            <div class="field">
+              <label for="p2">Parent OD (inches)</label>
+              <input id="p2" type="number" step="0.001" value="1.75" />
+              <div class="hint"><span id="p2Mm" class="mm"></span></div>
+            </div>
+            <div class="field">
+              <label for="angle2">Saddle angle (degrees)</label>
+              <input id="angle2" type="number" step="0.1" value="90" />
+            </div>
+          </div>
+          <div class="field">
+            <label for="cut2">Saddle style</label>
+            <select id="cut2">
+              <option value="auto" selected>Auto</option>
+              <option value="wrap">Full 360 wrap</option>
+              <option value="stand">Stand-on fishmouth (bottom only)</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <h2>Cut settings</h2>
+      <div class="row">
+        <div class="field">
+          <label for="stepDeg">Degrees of steps</label>
+          <input id="stepDeg" type="number" step="0.1" min="0.25" value="1" />
+        </div>
+        <div class="field">
+          <label for="feed">Feed F (mm/min)</label>
+          <input id="feed" type="number" step="1" value="800" />
+        </div>
+      </div>
+      <div class="row">
+        <div class="field">
+          <label for="dwell">Pierce dwell G4 P</label>
+          <input id="dwell" type="number" step="1" value="500" />
+        </div>
+        <div class="field">
+          <label for="zeroMode">Y zero</label>
+          <select id="zeroMode">
+            <option value="end1" selected>End 1 (far end) at Y0, End 2 negative</option>
+            <option value="firstcut">First cut starts at Y0</option>
+          </select>
+        </div>
+      </div>
+      <div class="row">
+        <div class="field">
+          <label for="mOn">Torch / laser ON</label>
+          <input id="mOn" type="text" value="M3" />
+        </div>
+        <div class="field">
+          <label for="mOff">Torch / laser OFF</label>
+          <input id="mOff" type="text" value="M5" />
+        </div>
+      </div>
+      <div class="field">
+        <label for="notes">Notes</label>
+        <textarea id="notes">Make sure both cuts are fully completed</textarea>
+      </div>
+
+      <div class="btns">
+        <button type="button" id="btnGen">Generate G-code</button>
+        <button type="button" class="secondary" id="btnCopy">Copy</button>
+        <button type="button" class="secondary" id="btnDl">Download .nc</button>
+      </div>
+      <div id="status" class="err"></div>
+    </section>
+
+    <section class="out-col">
+      <h2>Setup check</h2>
+      <div class="stats">
+        <div class="stat"><span>Reference span</span><b id="sCC">—</b></div>
+        <div class="stat"><span>Longest finished length</span><b id="sLong">—</b></div>
+        <div class="stat"><span>Shortest finished length</span><b id="sShort">—</b></div>
+        <div class="stat"><span>End 1 / End 2</span><b id="sD1">—</b></div>
+      </div>
+      <canvas id="preview" width="900" height="220"></canvas>
+      <div class="legend">Orange = end 1 (far end) · yellow = end 2 (chuck end). A flush cut is a flat line. A saddle is the fishmouth curve. Y0 is at End 1; End 2 sits at negative Y.</div>
+      <h2>G-code</h2>
+      <textarea id="gcode" spellcheck="false"></textarea>
+    </section>
+  </div>
+
+  <script>
+    const IN = 25.4;
+    const $ = (id) => document.getElementById(id);
+
+    function num(id) {
+      const v = parseFloat($(id).value);
+      return Number.isFinite(v) ? v : NaN;
+    }
+    function fmt(n, d) { return Number(n).toFixed(d); }
+
+    function updateMmLabels() {
+      [["childOd","childOdMm"],["wall","wallMm"],["p1","p1Mm"],["p2","p2Mm"],["span","spanMm"]].forEach(([src, dst]) => {
+        const v = num(src);
+        $(dst).textContent = Number.isFinite(v) ? (v * IN).toFixed(3) + " mm" : "";
+      });
+    }
+
+    function offsetFromParent(thetaDeg, Rp, Rc, angleDeg) {
+      const th = thetaDeg * Math.PI / 180;
+      const af = angleDeg * Math.PI / 180;
+      const s = Math.sin(th);
+      const c = Math.cos(th);
+      const inside = Rp * Rp - (Rc * s) * (Rc * s);
+      if (inside < -1e-9) return null;
+      const root = Math.sqrt(Math.max(0, inside));
+      if (Math.abs(Math.sin(af)) < 1e-9) return null;
+      if (Math.abs(angleDeg - 90) < 1e-9) return root;
+      return root / Math.sin(af) - (Rc * c) / Math.tan(af);
+    }
+
+    function showSaddleFields() {
+      $("saddle1").classList.toggle("hidden", $("type1").value !== "saddle");
+      $("saddle2").classList.toggle("hidden", $("type2").value !== "saddle");
+      $("h1").textContent = $("type1").value === "flush" ? "Flush square cut" : "Saddle onto a pipe";
+      $("h2").textContent = $("type2").value === "flush" ? "Flush square cut" : "Saddle onto a pipe";
+    }
+
+    function syncEnds() {
+      const same = $("bothEnds").checked;
+      $("type2").disabled = same;
+      $("p2").disabled = same;
+      $("angle2").disabled = same;
+      $("cut2").disabled = same;
+      if (same) {
+        $("type2").value = $("type1").value;
+        $("p2").value = $("p1").value;
+        $("angle2").value = $("angle1").value;
+        $("cut2").value = $("cut1").value;
+      }
+      showSaddleFields();
+    }
+
+    function resolveKind(cutMode, Rp, Rc) {
+      if (cutMode === "stand") return "stand";
+      if (cutMode === "wrap") return "wrap";
+      return (Rc > Rp + 1e-6) ? "stand" : "wrap";
+    }
+
+    function makeFlush(step) {
+      const angles = [];
+      const offs = [];
+      for (let a = 0; a <= 360 + 1e-9; a = +(a + step).toFixed(8)) {
+        angles.push(Number(a.toFixed(6)));
+        offs.push(0);
+      }
+      if (angles[angles.length - 1] !== 360) { angles.push(360); offs.push(0); }
+      return { kind: "flush", angles, offs };
+    }
+
+    function makeSaddle(Rp, Rc, angleDeg, step, cutMode) {
+      const kind = resolveKind(cutMode, Rp, Rc);
+      if (kind === "wrap" && Rc > Rp + 1e-6) {
+        return { error: "Full 360 wrap needs the parent at least as big as the tube. Use stand-on, or pick flush if this end does not attach." };
+      }
+      const angles = [];
+      const offs = [];
+      if (kind === "stand") {
+        const ratio = Math.min(0.999999, Rp / Rc);
+        const tmax = Math.asin(ratio) * 180 / Math.PI;
+        const raw = [];
+        for (let a = -tmax; a <= tmax + 1e-9; a = +(a + step).toFixed(8)) raw.push(Number(a.toFixed(6)));
+        if (raw[raw.length - 1] !== Number(tmax.toFixed(6))) raw.push(Number(tmax.toFixed(6)));
+        for (const a of raw) {
+          const o = offsetFromParent(a, Rp, Rc, angleDeg);
+          if (o === null) continue;
+          angles.push(a);
+          offs.push(o);
+        }
+        if (angles.length < 3) return { error: "Stand-on fishmouth did not produce a usable arc." };
+        return { kind, angles, offs, tmax };
+      }
+      for (let a = 0; a <= 360 + 1e-9; a = +(a + step).toFixed(8)) {
+        const aa = Number(a.toFixed(6));
+        const o = offsetFromParent(aa, Rp, Rc, angleDeg);
+        if (o === null) return { error: "No real intersection at A=" + aa + "°." };
+        angles.push(aa);
+        offs.push(o);
+      }
+      if (angles[angles.length - 1] !== 360) {
+        const o = offsetFromParent(360, Rp, Rc, angleDeg);
+        if (o !== null) { angles.push(360); offs.push(o); }
+      }
+      return { kind, angles, offs };
+    }
+
+    function collect() {
+      syncEnds();
+      return {
+        name: $("cutName").value.trim() || "tube",
+        childOdIn: num("childOd"),
+        wallIn: num("wall"),
+        p1In: num("p1"),
+        p2In: num("p2"),
+        angle1: num("angle1"),
+        angle2: num("angle2"),
+        type1: $("type1").value,
+        type2: $("type2").value,
+        cut1: $("cut1").value,
+        cut2: $("cut2").value,
+        lengthIn: num("span"),
+        lengthMode: $("lengthMode").value,
+        both: $("bothEnds").checked,
+        mm: $("mmOut").checked,
+        step: num("stepDeg"),
+        feed: num("feed"),
+        dwell: Math.round(num("dwell") || 0),
+        zeroMode: $("zeroMode").value,
+        mOn: $("mOn").value.trim() || "M3",
+        mOff: $("mOff").value.trim() || "M5",
+        notes: $("notes").value.trim()
+      };
+    }
+
+    function kindLabel(k) {
+      if (k === "flush") return "flush square cut";
+      if (k === "stand") return "stand-on fishmouth";
+      return "saddle wrap";
+    }
+
+    function build(p) {
+      const errors = [];
+      ["childOdIn","wallIn","lengthIn","step"].forEach((k) => {
+        if (!Number.isFinite(p[k]) || p[k] <= 0) errors.push("Check " + k + " — needs a positive number.");
+      });
+      if (p.wallIn * 2 >= p.childOdIn) errors.push("Wall is too thick for that OD.");
+      if (p.step > 15) errors.push("Step is coarse — use 1°.");
+      if (p.type1 === "saddle") {
+        if (!(p.p1In > 0) || !(p.angle1 > 0)) errors.push("End 1 saddle needs parent OD and angle.");
+        if (p.angle1 < 15 || p.angle1 > 165) errors.push("End 1 angle should be 15° to 165°.");
+      }
+      if (p.type2 === "saddle") {
+        if (!(p.p2In > 0) || !(p.angle2 > 0)) errors.push("End 2 saddle needs parent OD and angle.");
+        if (p.angle2 < 15 || p.angle2 > 165) errors.push("End 2 angle should be 15° to 165°.");
+      }
+      if (errors.length) return { errors };
+
+      const Rc = (p.childOdIn / 2) * IN;
+      const Rp1 = (p.p1In / 2) * IN;
+      const Rp2 = (p.p2In / 2) * IN;
+      const wall = p.wallIn * IN;
+      const lengthMm = p.lengthIn * IN;
+      const step = p.step;
+
+      const prof1 = p.type1 === "flush" ? makeFlush(step) : makeSaddle(Rp1, Rc, p.angle1, step, p.cut1);
+      const prof2 = p.type2 === "flush" ? makeFlush(step) : makeSaddle(Rp2, Rc, p.angle2, step, p.cut2);
+      if (prof1.error) errors.push("End 1: " + prof1.error);
+      if (prof2.error) errors.push("End 2: " + prof2.error);
+      if (errors.length) return { errors };
+
+      const off1 = prof1.offs;
+      const off2 = prof2.offs;
+      const a1 = prof1.angles;
+      const a2 = prof2.angles;
+      const min1 = Math.min.apply(null, off1);
+      const max1 = Math.max.apply(null, off1);
+      const min2 = Math.min.apply(null, off2);
+      const max2 = Math.max.apply(null, off2);
+
+      let span;
+      if (p.lengthMode === "longest") span = lengthMm + min1 + min2;
+      else if (p.lengthMode === "crown") span = lengthMm + max1 + max2;
+      else span = lengthMm;
+
+      if (span < max1 + max2 - 1e-6) {
+        errors.push("That length is too short for these two cuts.");
+        return { errors };
+      }
+
+      // Y zero at End 1 (far end). End 1 sits at the high positive Y, End 2 at negative Y near the chuck.
+      // First cut runs at End 1, then Y moves negative toward the chuck for End 2.
+      let y1 = off1.map((o) => span - o);
+      let y2 = off2.map((o) => -o);
+      if (p.zeroMode === "firstcut") {
+        const shift = Math.min.apply(null, y1);
+        y1 = y1.map((y) => y - shift);
+        y2 = y2.map((y) => y - shift);
+      }
+
+      const d1 = max1 - min1;
+      const d2 = max2 - min2;
+      const longest = span - min1 - min2;
+      const shortest = span - max1 - max2;
+      const unit = p.mm ? "mm" : "in";
+      const toOut = (mmVal) => p.mm ? mmVal : mmVal / IN;
+      const dec = p.mm ? 3 : 4;
+      const axisY = (v) => "Y" + fmt(toOut(v), dec);
+
+      const lines = [];
+      const push = (s) => lines.push(s);
+      push("%");
+      push("(Tube Notch/cut)");
+      push("(Name of cut: " + p.name + ")");
+      push("(Tube I'm cutting OD: " + p.childOdIn + " in / " + fmt(p.childOdIn * IN, 3) + " mm)");
+      push("(Wall thickness: " + p.wallIn + " in / " + fmt(wall, 3) + " mm)");
+      if (p.type1 === "flush") push("(End 1: flush square cut — no parent pipe)");
+      else push("(End 1 parent OD: " + p.p1In + " in / " + fmt(p.p1In * IN, 3) + " mm @ " + p.angle1 + " deg, " + kindLabel(prof1.kind) + ")");
+      if (p.type2 === "flush") push("(End 2: flush square cut — no parent pipe)");
+      else push("(End 2 parent OD: " + p.p2In + " in / " + fmt(p.p2In * IN, 3) + " mm @ " + p.angle2 + " deg, " + kindLabel(prof2.kind) + ")");
+      push("(Length entered: " + p.lengthIn + " in / " + fmt(lengthMm, 3) + " mm — " + (
+        p.lengthMode === "longest" ? "finished longest" :
+        p.lengthMode === "crown" ? "finished shortest" : "reference to reference"
+      ) + ")");
+      push("(Reference span: " + fmt(span / IN, 4) + " in / " + fmt(span, 3) + " mm)");
+      push("(Both ends the same: " + (p.both ? "Yes" : "No") + ")");
+      push("(G-code units: " + unit + ")");
+      push("(Degrees of steps: " + step + ")");
+      push("(Notes: " + (p.notes || "none") + ")");
+      push("(Machine: Y along tube, A rotary degrees, Z fixed)");
+      push("(Y0: " + (p.zeroMode === "firstcut" ? "first cut starts at Y0" : "End 1 far end at Y0, End 2 negative toward chuck") + ")");
+      push("(Cut order: End 1 first at far end, then End 2 toward chuck — good piece stays in chuck)");
+      push("(Longest finished length: " + fmt(toOut(longest), dec) + " " + unit + ")");
+      push("(Shortest finished length: " + fmt(toOut(shortest), dec) + " " + unit + ")");
+      push("G21");
+      if (!p.mm) lines[lines.length - 1] = "G20";
+      push("G90 G94 G17");
+      push("G40 G49");
+      push("F" + (p.mm ? Math.round(p.feed) : fmt(p.feed / IN, 2)));
+
+      function cutEnd(label, angArr, yArr, kind) {
+        push("");
+        push("(" + label + " — " + kindLabel(kind) + (kind === "flush" || kind === "wrap" ? ", full 360 closed loop" : ", partial arc") + ")");
+        push("G00 A" + fmt(angArr[0], 3) + " " + axisY(yArr[0]));
+        push(p.mOn);
+        if (p.dwell > 0) push("G04 P" + p.dwell);
+        push("G01 A" + fmt(angArr[0], 3) + " " + axisY(yArr[0]));
+        for (let i = 1; i < angArr.length; i++) {
+          push("G01 A" + fmt(angArr[i], 3) + " " + axisY(yArr[i]));
+        }
+        push(p.mOff);
+      }
+      cutEnd("END 1", a1, y1, prof1.kind);
+      cutEnd("END 2", a2, y2, prof2.kind);
+      push("");
+      push("G00 A0.000");
+      push("M30");
+      push("%");
+
+      return {
+        errors: [],
+        gcode: lines.join("\n"),
+        a1, a2, y1, y2, off1, off2, d1, d2, longest, shortest, span, unit, toOut, dec,
+        kind1: prof1.kind, kind2: prof2.kind
+      };
+    }
+
+    function drawPreview(res) {
+      const c = $("preview");
+      const ctx = c.getContext("2d");
+      ctx.clearRect(0, 0, c.width, c.height);
+      if (!res || res.errors.length) return;
+      const ys = res.off1.concat(res.off2);
+      const ymin = Math.min.apply(null, ys);
+      const ymax = Math.max.apply(null, ys);
+      const padL = 44, padR = 16, padT = 16, padB = 28;
+      const x0 = padL, x1 = c.width - padR, y0 = padT, y1h = c.height - padB;
+      const allA = res.a1.concat(res.a2);
+      const amin = Math.min.apply(null, allA);
+      const amax = Math.max.apply(null, allA);
+      const xAt = (a) => x0 + ((a - amin) / Math.max(1e-6, amax - amin)) * (x1 - x0);
+      const yAt = (y) => y1h - ((y - ymin) / Math.max(1e-6, ymax - ymin)) * (y1h - y0);
+      ctx.strokeStyle = "#3a4150";
+      ctx.beginPath();
+      ctx.moveTo(x0, y1h);
+      ctx.lineTo(x1, y1h);
+      ctx.moveTo(x0, y0);
+      ctx.lineTo(x0, y1h);
+      ctx.stroke();
+      ctx.fillStyle = "#9aa3b2";
+      ctx.font = "11px sans-serif";
+      ctx.fillText(Math.round(amin) + "°", x0, c.height - 8);
+      ctx.fillText(Math.round((amin + amax) / 2) + "°", xAt((amin + amax) / 2) - 10, c.height - 8);
+      ctx.fillText(Math.round(amax) + "°", x1 - 28, c.height - 8);
+      function stroke(ang, arr, color) {
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        arr.forEach((y, i) => {
+          const x = xAt(ang[i]);
+          const yy = yAt(y);
+          if (i === 0) ctx.moveTo(x, yy); else ctx.lineTo(x, yy);
+        });
+        ctx.stroke();
+      }
+      stroke(res.a1, res.off1, "#e08a2c");
+      stroke(res.a2, res.off2, "#f3b15a");
+    }
+
+    function generate() {
+      updateMmLabels();
+      const res = build(collect());
+      const status = $("status");
+      if (res.errors.length) {
+        status.textContent = res.errors[0];
+        status.className = "err";
+        $("gcode").value = res.errors.join("\n");
+        $("sCC").textContent = "—";
+        $("sLong").textContent = "—";
+        $("sShort").textContent = "—";
+        $("sD1").textContent = "—";
+        drawPreview(null);
+        return res;
+      }
+      status.textContent = "Generated " + res.gcode.split("\n").length + " lines. End 1: " + kindLabel(res.kind1) + " · End 2: " + kindLabel(res.kind2) + ".";
+      status.className = "ok";
+      $("gcode").value = res.gcode;
+      $("gcode").scrollTop = 0;
+      $("sCC").textContent = fmt(res.toOut(res.span), res.dec) + " " + res.unit;
+      $("sLong").textContent = fmt(res.toOut(res.longest), res.dec) + " " + res.unit;
+      $("sShort").textContent = fmt(res.toOut(res.shortest), res.dec) + " " + res.unit;
+      $("sD1").textContent = kindLabel(res.kind1) + " / " + kindLabel(res.kind2);
+      drawPreview(res);
+      return res;
+    }
+
+    async function copyGcode() {
+      generate();
+      try {
+        await navigator.clipboard.writeText($("gcode").value);
+        $("status").textContent = "Copied " + $("gcode").value.split("\n").length + " lines.";
+        $("status").className = "ok";
+      } catch (e) {
+        $("gcode").focus();
+        $("gcode").select();
+        $("status").textContent = "G-code is selected — press Ctrl+C.";
+      }
+    }
+    function downloadNc() {
+      const res = generate();
+      if (res.errors.length) return;
+      const name = (collect().name || "tube").replace(/[^\w.-]+/g, "_") + ".nc";
+      const blob = new Blob([$("gcode").value], { type: "text/plain" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = name;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(a.href);
+      $("status").textContent = "Download started: " + name;
+      $("status").className = "ok";
+    }
+
+    $("btnGen").addEventListener("click", generate);
+    $("btnCopy").addEventListener("click", copyGcode);
+    $("btnDl").addEventListener("click", downloadNc);
+    $("btnGenTop").addEventListener("click", generate);
+    $("btnCopyTop").addEventListener("click", copyGcode);
+    $("btnDlTop").addEventListener("click", downloadNc);
+    ["childOd","wall","p1","p2","span","angle1","angle2","type1","type2","cut1","cut2","lengthMode","stepDeg","bothEnds","mmOut","zeroMode","feed","dwell","cutName","notes"].forEach((id) => {
+      $(id).addEventListener("input", () => { syncEnds(); updateMmLabels(); });
+      $(id).addEventListener("change", generate);
+    });
+
+    syncEnds();
+    updateMmLabels();
+    generate();
+  </script>
+</body>
+</html>
