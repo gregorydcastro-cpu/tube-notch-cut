@@ -444,7 +444,7 @@
       }
       if (errors.length) return { errors };
 
-      const Rc = (p.childOdIn / 2) * IN;
+      const Rc = (p.childOdIn / 2 - p.wallIn) * IN;  // use ID so the notch seats on the inner wall against the parent OD
       const Rp1 = (p.p1In / 2) * IN;
       const Rp2 = (p.p2In / 2) * IN;
       const wall = p.wallIn * IN;
