@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Wrapper → G-code</title>
+<style>
+  :root {
+    --bg:#121418; --panel:#1b1f27; --panel-2:#232833; --line:#3a4150;
+    --text:#e8e4db; --muted:#9aa3b2; --accent:#e08a2c; --accent-2:#f3b15a;
+    --good:#7dbe6a; --bad:#d46a6a;
+    --mono:"IBM Plex Mono","Consolas","Menlo",monospace;
+    --sans:"Segoe UI","Helvetica Neue",Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:var(--sans)}
+  body{min-height:100vh}
+  header{padding:16px 24px 14px;border-bottom:1px solid var(--line);
+    background:linear-gradient(180deg,#1e232d,#15181e);position:sticky;top:0;z-index:5}
+  header h1{margin:0 0 6px;font-size:22px;letter-spacing:.04em;text-transform:uppercase}
+  header p{margin:0 0 10px;color:var(--muted);font-size:13px}
+  .wrap{display:grid;grid-template-columns:440px 1fr;min-height:calc(100vh - 78px)}
+  @media(max-width:980px){.wrap{grid-template-columns:1fr}}
+  .form-col{padding:18px 20px 40px;border-right:1px solid var(--line);background:var(--panel)}
+  .out-col{padding:18px 20px 40px}
+  h2{margin:18px 0 10px;font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent-2)}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  label{display:block;font-size:12px;color:var(--muted);margin-bottom:4px}
+  input[type=text],input[type=number],select,textarea{
+    width:100%;background:#101318;color:var(--text);border:1px solid var(--line);
+    border-radius:6px;padding:8px 10px;font-size:14px;font-family:var(--mono)}
+  textarea{min-height:64px;resize:vertical}
+  input:focus,select:focus,textarea:focus{outline:1px solid var(--accent);border-color:var(--accent)}
+  .field{margin-bottom:10px}
+  .check{display:flex;align-items:center;gap:8px;margin:10px 0;color:var(--text);font-size:14px}
+  .hint{font-size:11px;color:var(--muted);margin-top:3px}
+  .mm{color:var(--accent-2);font-family:var(--mono);font-size:11px}
+  .btns{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0 8px}
+  button{background:var(--accent);color:#1a1208;border:0;border-radius:6px;
+    padding:10px 14px;font-weight:700;cursor:pointer;font-size:13px}
+  button.secondary{background:var(--panel-2);color:var(--text);border:1px solid var(--line)}
+  button:hover{filter:brightness(1.08)}
+  .stats{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
+  .stat{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px 12px}
+  .stat b{display:block;font-size:16px;font-family:var(--mono)}
+  .stat span{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.08em}
+  canvas{width:100%;height:240px;background:#0d1016;border:1px solid var(--line);border-radius:8px}
+  #gcode{width:100%;min-height:420px;background:#0d1016;color:#d7e0c8;border:1px solid var(--line);
+    border-radius:8px;padding:12px;font-family:var(--mono);font-size:12px;line-height:1.35;white-space:pre}
+  .err{color:var(--bad);font-size:13px;min-height:18px}
+  .ok{color:var(--good)}
+  .legend{color:var(--muted);font-size:12px;margin:6px 0 14px}
+  .tabs{display:flex;gap:6px;margin-bottom:12px}
+  .tab{background:var(--panel-2);color:var(--text);border:1px solid var(--line);
+    border-radius:6px;padding:8px 12px;font-size:12px;cursor:pointer;font-weight:600}
+  .tab.active{background:var(--accent);color:#1a1208;border-color:var(--accent)}
+  .panel{display:none}
+  .panel.active{display:block}
+  .hidden{display:none!important}
+</style>
+</head>
+<body>
+<header>
+  <h1>Wrapper → G-code</h1>
+  <p>Two ways in: <b>compute</b> a saddle profile from tube OD, parent OD and angle (same math as your Tube Notch/cut generator), or <b>paste</b> a Bend-Tech wrapper table (circumference vs axial offset) and emit MASSO-style rotary G-code. A = degrees around the tube, Y = axial position. Zero on the seam, cut far end first.</p>
+  <div class="btns">
+    <button type="button" id="btnGenTop">Generate G-code</button>
+    <button type="button" class="secondary" id="btnCopyTop">Copy</button>
+    <button type="button" class="secondary" id="btnDlTop">Download .nc</button>
+  </div>
+</header>
+<div class="wrap">
+  <section class="form-col">
+    <div class="tabs">
+      <div class="tab active" data-tab="compute">Compute profile</div>
+      <div class="tab" data-tab="paste">Paste wrapper table</div>
+    </div>
+
+    <div class="panel active" id="panel-compute">
+      <h2>Tube I'm cutting</h2>
+      <div class="row">
+        <div class="field">
+          <label for="childOd">OD (inches)</label>
+          <input id="childOd" type="number" step="0.001" value="1.5" />
+          <div class="hint"><span id="childOdMm" class="mm"></span></div>
+        </div>
+        <div class="field">
+          <label for="wall">Wall thickness (inches)</label>
+          <input id="wall" type="number" step="0.001" value="0.083" />
+          <div class="hint"><span id="wallMm" class="mm"></span></div>
+        </div>
+      </div>
+      <h2>Parent pipe it saddles onto</h2>
+      <div class="row">
+        <div class="field">
+          <label for="p1">Parent OD (inches)</label>
+          <input id="p1" type="number" step="0.001" value="1.25" />
+          <div class="hint"><span id="p1Mm" class="mm"></span></div>
+        </div>
+        <div class="field">
+          <label for="angle1">Saddle angle (degrees)</label>
+          <input id="angle1" type="number" step="0.1" value="90" />
+        </div>
+      </div>
+      <div class="field">
+        <label for="cut1">Saddle style</label>
+        <select id="cut1">
+          <option value="auto" selected>Auto</option>
+          <option value="stand">Stand-on fishmouth (bottom only)</option>
+          <option value="wrap">Full 360 wrap</option>
+        </select>
+        <div class="hint">Auto uses stand-on when the parent is smaller than the tube.</div>
+      </div>
+    </div>
+
+    <div class="panel" id="panel-paste">
+      <h2>Bend-Tech wrapper table</h2>
+      <div class="field">
+        <label for="wrapTable">Paste rows: circumference (in) , axial offset (in)</label>
+        <textarea id="wrapTable" spellcheck="false" placeholder="0.000, 0.000&#10;0.125, 0.042&#10;0.250, 0.083&#10;..."></textarea>
+        <div class="hint">One point per line. Comma, tab or space separated. First column = distance around the tube circumference, second = how far the cut sits along the tube axis. Order doesn't matter — it gets sorted.</div>
+      </div>
+      <div class="row">
+        <div class="field">
+          <label for="childOdPaste">Tube OD (inches) — for preview only</label>
+          <input id="childOdPaste" type="number" step="0.001" value="1.5" />
+        </div>
+        <div class="field">
+          <label for="wallPaste">Wall (inches) — for preview only</label>
+          <input id="wallPaste" type="number" step="0.001" value="0.083" />
+        </div>
+      </div>
+    </div>
+
+    <h2>Cut settings</h2>
+    <div class="row">
+      <div class="field">
+        <label for="stepDeg">Degrees of steps</label>
+        <input id="stepDeg" type="number" step="0.1" min="0.25" value="1" />
+      </div>
+      <div class="field">
+        <label for="feed">Feed F (mm/min)</label>
+        <input id="feed" type="number" step="1" value="385" />
+      </div>
+    </div>
+    <div class="row">
+      <div class="field">
+        <label for="dwell">Pierce dwell G4 P</label>
+        <input id="dwell" type="number" step="1" value="200" />
+      </div>
+      <div class="field">
+        <label for="tool">Tool (MASSO plasma)</label>
+        <input id="tool" type="text" value="T112" />
+        <div class="hint">T112 plasma. Do not use T111.</div>
+      </div>
+    </div>
+    <div class="row">
+      <div class="field">
+        <label for="retractZ">Retract Z</label>
+        <input id="retractZ" type="number" step="0.1" value="30" />
+      </div>
+      <div class="field">
+        <label for="zeroMode">Y zero</label>
+        <select id="zeroMode">
+          <option value="seam" selected>Seam at A0, Y0 — cut deepest point first</option>
+          <option value="firstcut">Shift so first pierce starts at Y0</option>
+        </select>
+      </div>
+    </div>
+    <label class="check"><input id="mmOut" type="checkbox" checked /> G-code in millimeters</label>
+    <label class="check"><input id="closedLoop" type="checkbox" checked /> Close the loop (return to start)</label>
+    <div class="field">
+      <label for="notes">Notes</label>
+      <input id="notes" type="text" value="" />
+    </div>
+
+    <div class="btns">
+      <button type="button" id="btnGen">Generate G-code</button>
+      <button type="button" class="secondary" id="btnCopy">Copy</button>
+      <button type="button" class="secondary" id="btnDl">Download .nc</button>
+    </div>
+    <div class="err" id="status"></div>
+  </section>
+
+  <section class="out-col">
+    <div class="stats">
+      <div class="stat"><b id="sCirc">—</b><span>Circumference span</span></div>
+      <div class="stat"><b id="sAxial">—</b><span>Axial depth</span></div>
+      <div class="stat"><b id="sPts">—</b><span>Points</span></div>
+      <div class="stat"><b id="sKind">—</b><span>Profile</span></div>
+    </div>
+    <canvas id="preview" width="600" height="240"></canvas>
+    <div class="legend">Orange = cut profile (axial offset vs angle). Seam sits at A0.</div>
+    <h2>G-code</h2>
+    <textarea id="gcode" spellcheck="false"></textarea>
+  </section>
+</div>
+
+<script>
+const IN = 25.4;
+const $ = (id) => document.getElementById(id);
+const num = (id) => { const v = parseFloat($(id).value); return Number.isFinite(v) ? v : NaN; };
+const fmt = (n, d) => Number(n).toFixed(d);
+
+function updateMmLabels() {
+  [["childOd","childOdMm"],["wall","wallMm"],["p1","p1Mm"]].forEach(([s,d]) => {
+    const v = num(s); $(d).textContent = Number.isFinite(v) ? (v*IN).toFixed(3)+" mm" : "";
+  });
+}
+
+// ---- saddle math (identical to Tube Notch/cut) ----
+function offsetFromParent(thetaDeg, Rp, Rc, angleDeg) {
+  const th = thetaDeg * Math.PI / 180;
+  const af = angleDeg * Math.PI / 180;
+  const s = Math.sin(th), c = Math.cos(th);
+  const inside = Rp*Rp - (Rc*s)*(Rc*s);
+  if (inside < -1e-9) return null;
+  const root = Math.sqrt(Math.max(0, inside));
+  if (Math.abs(Math.sin(af)) < 1e-9) return null;
+  if (Math.abs(angleDeg - 90) < 1e-9) return root;
+  return root / Math.sin(af) - (Rc * c) / Math.tan(af);
+}
+function resolveKind(cutMode, Rp, Rc) {
+  if (cutMode === "stand") return "stand";
+  if (cutMode === "wrap") return "wrap";
+  return (Rc > Rp + 1e-6) ? "stand" : "wrap";
+}
+function makeFlush(step) {
+  const angles=[], offs=[];
+  for (let a=0; a<=360+1e-9; a=+(a+step).toFixed(8)) { angles.push(Number(a.toFixed(6))); offs.push(0); }
+  if (angles[angles.length-1] !== 360) { angles.push(360); offs.push(0); }
+  return { kind:"flush", angles, offs };
+}
+function makeSaddle(Rp, Rc, angleDeg, step, cutMode) {
+  const kind = resolveKind(cutMode, Rp, Rc);
+  if (kind === "wrap" && Rc > Rp + 1e-6)
+    return { error:"Full 360 wrap needs the parent at least as big as the tube. Use stand-on." };
+  const angles=[], offs=[];
+  if (kind === "stand") {
+    const ratio = Math.min(0.999999, Rp/Rc);
+    const tmax = Math.asin(ratio)*180/Math.PI;
+    const raw=[];
+    for (let a=-tmax; a<=tmax+1e-9; a=+(a+step).toFixed(8)) raw.push(Number(a.toFixed(6)));
+    if (raw[raw.length-1] !== Number(tmax.toFixed(6))) raw.push(Number(tmax.toFixed(6)));
+    for (const a of raw) { const o = offsetFromParent(a, Rp, Rc, angleDeg); if (o===null) continue; angles.push(a); offs.push(o); }
+    if (angles.length < 3) return { error:"Stand-on fishmouth did not produce a usable arc." };
+    return { kind, angles, offs, tmax };
+  }
+  for (let a=0; a<=360+1e-9; a=+(a+step).toFixed(8)) {
+    const aa=Number(a.toFixed(6));
+    const o = offsetFromParent(aa, Rp, Rc, angleDeg);
+    if (o===null) return { error:"No real intersection at A="+aa+"°." };
+    angles.push(aa); offs.push(o);
+  }
+  if (angles[angles.length-1] !== 360) {
+    const o = offsetFromParent(360, Rp, Rc, angleDeg);
+    if (o!==null) { angles.push(360); offs.push(o); }
+  }
+  return { kind, angles, offs };
+}
+
+// ---- parse a pasted Bend-Tech wrapper table ----
+function parseWrapperTable(text) {
+  const angles=[], offs=[];
+  const lines = text.split(/\r?\n/);
+  for (const ln of lines) {
+    const t = ln.trim();
+    if (!t || t.startsWith("#") || t.startsWith("//")) continue;
+    const parts = t.split(/[\s,;]+/).map(parseFloat).filter(Number.isFinite);
+    if (parts.length < 2) continue;
+    angles.push(parts[0]); offs.push(parts[1]);
+  }
+  if (angles.length < 3) return { error:"Need at least 3 valid rows (circumference, offset)." };
+  const idx = angles.map((a,i)=>({a,o:offs[i]})).sort((x,y)=>x.a-y.a);
+  const a=[], o=[];
+  for (const p of idx) { a.push(p.a); o.push(p.o); }
+  return { angles:a, offs:o, raw:true };
+}
+
+function collect() {
+  const mode = $("panel-compute").classList.contains("active") ? "compute" : "paste";
+  const p = {
+    mode,
+    childOdIn: mode==="compute" ? num("childOd") : num("childOdPaste"),
+    wallIn: mode==="compute" ? num("wall") : num("wallPaste"),
+    p1In: num("p1"), angle1: num("angle1"), cut1: $("cut1").value,
+    tableText: $("wrapTable").value,
+    step: num("stepDeg"), feed: num("feed"), dwell: Math.round(num("dwell")||0),
+    tool: $("tool").value.trim()||"T112", retractZ: num("retractZ"),
+    zeroMode: $("zeroMode").value, mm: $("mmOut").checked,
+    closedLoop: $("closedLoop").checked, notes: $("notes").value.trim()
+  };
+  return p;
+}
+
+function kindLabel(k){ return k==="flush"?"flush square cut":k==="stand"?"stand-on fishmouth":"saddle wrap"; }
+
+function build(p) {
+  const errors=[];
+  ["childOdIn","wallIn","step"].forEach(k=>{ if(!Number.isFinite(p[k])||p[k]<=0) errors.push("Check "+k); });
+  if (p.wallIn*2 >= p.childOdIn) errors.push("Wall too thick for that OD.");
+  if (p.step>15) errors.push("Step too coarse — use 1°.");
+  if (errors.length) return {errors};
+
+  let prof;
+  if (p.mode==="compute") {
+    if (!(p.p1In>0)||!(p.angle1>0)) errors.push("Parent OD and angle required.");
+    if (p.angle1<15||p.angle1>165) errors.push("Angle should be 15°–165°.");
+    if (errors.length) return {errors};
+    const Rc=(p.childOdIn/2 - p.wallIn)*IN;
+    const Rp=(p.p1In/2)*IN;
+    prof = makeSaddle(Rp, Rc, p.angle1, p.step, p.cut1);
+    if (prof.error) { errors.push(prof.error); return {errors}; }
+  } else {
+    prof = parseWrapperTable(p.tableText);
+    if (prof.error) { errors.push(prof.error); return {errors}; }
+    const circ = Math.PI * p.childOdIn;
+    prof.angles = prof.angles.map(c => (c/circ)*360);
+    if (prof.angles[prof.angles.length-1] < 350) {
+      prof.angles.push(prof.angles[0]+360);
+      prof.offs.push(prof.offs[0]);
+    }
+    prof.kind = "pasted";
+  }
+
+  const aDeg = prof.angles.map(a => ((a%360)+360)%360);
+  const offs = prof.offs.slice();
+  const minO = Math.min.apply(null, offs);
+  const maxO = Math.max.apply(null, offs);
+  const circSpan = Math.max.apply(null, aDeg) - Math.min.apply(null, aDeg);
+
+  let y = offs.map(o => -(o - minO));
+  if (p.zeroMode==="firstcut") {
+    const shift = y[0]; y = y.map(v=>v-shift);
+  }
+  const pts = aDeg.map((a,i)=>({a,y:y[i]})).sort((u,v)=>u.a-v.a);
+
+  const unit = p.mm?"mm":"in";
+  const toOut = mm=> p.mm? mm : mm/IN;
+  const dec = p.mm?3:4;
+  const lines=[];
+  const push=s=>lines.push(s);
+  push("%");
+  push("(Wrapper → G-code)");
+  push("(Source: "+(p.mode==="compute"?"computed saddle":"pasted Bend-Tech wrapper")+")");
+  push("(Tube OD: "+p.childOdIn+" in / "+fmt(p.childOdIn*IN,3)+" mm)");
+  push("(Wall: "+p.wallIn+" in / "+fmt(p.wallIn*IN,3)+" mm)");
+  if (p.mode==="compute")
+    push("(Parent OD: "+p.p1In+" in / "+fmt(p.p1In*IN,3)+" mm @ "+p.angle1+"°, "+kindLabel(prof.kind)+")");
+  else
+    push("(Profile: pasted table, "+prof.angles.length+" points)");
+  push("(Notes: "+(p.notes||"none")+")");
+  push("(Machine: MASSO G3 plasma rotary — A degrees, Y axial)");
+  push("(Zero: seam at A0, Y0. Cut deepest point first.)");
+  push("(Pierce on path. No lead-in/lead-out.)");
+  push(p.mm?"G21":"G20");
+  push("G90 G94");
+  const tw = /^T/i.test(p.tool)?p.tool.toUpperCase():("T"+p.tool);
+  push(tw);
+  push("F"+(p.mm?Math.round(p.feed):fmt(p.feed/IN,2)));
+  const retractMm = Number.isFinite(p.retractZ)?p.retractZ:30;
+  const retractOut = p.mm?retractMm:retractMm/IN;
+  const retractWord = "G0 Z"+fmt(retractOut,dec);
+
+  push(retractWord);
+  push("G0 A"+fmt(pts[0].a,1)+" "+("Y"+fmt(toOut(pts[0].y),dec)));
+  if (p.dwell>0) push("G4 P"+p.dwell);
+  push("M3");
+  for (let i=1;i<pts.length;i++){
+    push("G1 A"+fmt(pts[i].a,1)+" "+("Y"+fmt(toOut(pts[i].y),dec)));
+  }
+  if (p.closedLoop) {
+    push("G1 A"+fmt(pts[0].a+360,1)+" "+("Y"+fmt(toOut(pts[0].y),dec)));
+  }
+  push("M5");
+  push(retractWord);
+  push("G0 A0 Y0");
+  push("M30");
+  push("%");
+
+  return {
+    errors:[], gcode:lines.join("\n"),
+    circSpan, axialDepth:maxO-minO, nPts:pts.length, kind:prof.kind,
+    aDeg:pts.map(p=>p.a), offs:pts.map(p=>p.y),
+    toOut, dec, unit
+  };
+}
+
+function drawPreview(res){
+  const c=$("preview"), ctx=c.getContext("2d");
+  ctx.clearRect(0,0,c.width,c.height);
+  if(!res||res.errors.length) return;
+  const padL=44,padR=16,padT=16,padB=28;
+  const x0=padL,x1=c.width-padR,y0=padT,y1=c.height-padB;
+  const amin=Math.min.apply(null,res.aDeg), amax=Math.max.apply(null,res.aDeg);
+  const ymin=Math.min.apply(null,res.offs), ymax=Math.max.apply(null,res.offs);
+  const xAt=a=>x0+((a-amin)/Math.max(1e-6,amax-amin))*(x1-x0);
+  const yAt=y=>y1-((y-ymin)/Math.max(1e-6,ymax-ymin))*(y1-y0);
+  ctx.strokeStyle="#3a4150"; ctx.beginPath();
+  ctx.moveTo(x0,y1);ctx.lineTo(x1,y1);ctx.moveTo(x0,y0);ctx.lineTo(x0,y1);ctx.stroke();
+  ctx.fillStyle="#9aa3b2";ctx.font="11px sans-serif";
+  ctx.fillText(Math.round(amin)+"°",x0,c.height-8);
+  ctx.fillText(Math.round((amin+amax)/2)+"°",xAt((amin+amax)/2)-10,c.height-8);
+  ctx.fillText(Math.round(amax)+"°",x1-28,c.height-8);
+  ctx.strokeStyle="#e08a2c";ctx.lineWidth=2;ctx.beginPath();
+  res.aDeg.forEach((a,i)=>{const x=xAt(a),yy=yAt(res.offs[i]);if(i===0)ctx.moveTo(x,yy);else ctx.lineTo(x,yy);});
+  ctx.stroke();
+}
+
+function generate(){
+  updateMmLabels();
+  const res=build(collect());
+  const st=$("status");
+  if(res.errors.length){
+    st.textContent=res.errors[0]; st.className="err";
+    $("gcode").value=res.errors.join("\n");
+    ["sCirc","sAxial","sPts","sKind"].forEach(id=>$("id" in {}?id:id).textContent="—");
+    $("sCirc").textContent="—";$("sAxial").textContent="—";$("sPts").textContent="—";$("sKind").textContent="—";
+    drawPreview(null); return res;
+  }
+  st.textContent="Generated "+res.gcode.split("\n").length+" lines. "+kindLabel(res.kind)+".";
+  st.className="ok";
+  $("gcode").value=res.gcode; $("gcode").scrollTop=0;
+  $("sCirc").textContent=fmt(res.circSpan,1)+"°";
+  $("sAxial").textContent=fmt(res.toOut(res.axialDepth),res.dec)+" "+res.unit;
+  $("sPts").textContent=res.nPts;
+  $("sKind").textContent=kindLabel(res.kind);
+  drawPreview(res); return res;
+}
+
+async function copyGcode(){
+  generate();
+  try{ await navigator.clipboard.writeText($("gcode").value);
+    $("status").textContent="Copied "+$("gcode").value.split("\n").length+" lines."; $("status").className="ok";
+  }catch(e){ $("gcode").focus();$("gcode").select();
+    $("status").textContent="G-code selected — press Ctrl+C."; }
+}
+function downloadNc(){
+  const res=generate(); if(res.errors.length) return;
+  const name="wrapper.nc";
+  const blob=new Blob([$("gcode").value],{type:"text/plain"});
+  const a=document.createElement("a"); a.href=URL.createObjectURL(blob);
+  a.download=name; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(a.href);
+  $("status").textContent="Download started: "+name; $("status").className="ok";
+}
+
+// tabs
+document.querySelectorAll(".tab").forEach(t=>{
+  t.addEventListener("click",()=>{
+    document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));
+    document.querySelectorAll(".panel").forEach(x=>x.classList.remove("active"));
+    t.classList.add("active");
+    $("panel-"+t.dataset.tab).classList.add("active");
+    generate();
+  });
+});
+
+$("btnGen").addEventListener("click",generate);
+$("btnCopy").addEventListener("click",copyGcode);
+$("btnDl").addEventListener("click",downloadNc);
+$("btnGenTop").addEventListener("click",generate);
+$("btnCopyTop").addEventListener("click",copyGcode);
+$("btnDlTop").addEventListener("click",downloadNc);
+["childOd","wall","p1","angle1","cut1","childOdPaste","wallPaste","wrapTable",
+ "stepDeg","feed","dwell","tool","retractZ","zeroMode","mmOut","closedLoop","notes"]
+.forEach(id=>{ const el=$(id); if(el){ el.addEventListener("input",()=>{updateMmLabels();}); el.addEventListener("change",generate);} });
+
+updateMmLabels(); generate();
+</script>
+</body>
+</html>
