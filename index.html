@@ -991,7 +991,8 @@ var StepCam = (() => {
       }
       const horn = indexOfMax(y1);
       const r1 = rotateClosed(a1, y1, horn);
-      const r2 = rotateClosed(a2, y2, horn);
+      const crotch = indexOfMax(y2);
+      const r2 = rotateClosed(a2, y2, crotch);
       const a1Out = r1.angles;
       y1 = r1.ys;
       y2 = r2.ys;
@@ -1051,7 +1052,7 @@ var StepCam = (() => {
         push("");
         push("(" + label + " — " + kindLabel(kind) + (kind === "flush" || kind === "wrap" ? ", full 360 closed loop" : ", partial arc") + ")");
         if (mode === "continue") {
-          push("(Torch up. Move Y to End 2. A does not go back to 0.)");
+          push("(Torch up. Move Y to End 2 crotch — shortest, not the horn.)");
           push("(Do NOT re-zero Y here. Same Y0 as End 1. Touch off Z only.)");
           push("G0 " + axisY(yArr[0]));
           push("G0 A" + fmt(angArr[0], 3));
