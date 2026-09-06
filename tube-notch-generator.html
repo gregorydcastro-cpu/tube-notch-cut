@@ -157,7 +157,8 @@
         </div>
       </div>
       <label class="check"><input id="bothEnds" type="checkbox" /> Both ends the same?</label>
-      <label class="check"><input id="mmOut" type="checkbox" checked /> G-code in millimeters</label>
+      <label class="check"><input id="mmOut" type="checkbox" checked /> G-code in millimeters (G21) — keep this on for MASSO</label>
+      <label class="check"><input id="flip2" type="checkbox" checked /> Flip End 2 notch 180° (A keeps going forward — no rewind to 0)</label>
 
       <h2>End 1 — far / free end (zero here, cut first)</h2>
       <div class="end-card">
@@ -425,6 +426,7 @@
         lengthMode: $("lengthMode").value,
         both: $("bothEnds").checked,
         mm: $("mmOut").checked,
+        flip2: $("flip2") ? $("flip2").checked : true,
         step: num("stepDeg"),
         feed: num("feed"),
         dwell: Math.round(num("dwell") || 0),
@@ -586,7 +588,8 @@
           push("(Torch up. Move Y to End 2. A does not go back to 0.)");
           push("(Do NOT re-zero Y here. Same Y0 as End 1. Touch off Z only.)");
           push("G0 " + axisY(yArr[0]));
-          push("G0 A" + fmt(angArr[0], 3));
+          const already = Math.abs(angArr[0] - (a1Last || 0)) < 0.05;
+          if (!already) push("G0 A" + fmt(angArr[0], 3));
         } else {
           push("G0 A" + fmt(angArr[0], 3) + " " + axisY(yArr[0]));
         }
@@ -599,8 +602,9 @@
         push(retractWord);
       }
       const a1Last = a1Out[a1Out.length - 1] || 0;
-      const a2Shift = a1Last - (r2.angles[0] || 0);
+      const a2Shift = a1Last + (p.flip2 ? 180 : 0) - (r2.angles[0] || 0);
       const a2Out = r2.angles.map((a) => a + a2Shift);
+      push("(End 2 notch: " + (p.flip2 ? "FLIPPED +180 deg, A keeps going forward (no rewind to 0)" : "same clocking, A keeps going forward (no rewind to 0)") + ")");
       cutEnd("END 1", a1Out, y1, prof1.kind, "first");
       cutEnd("END 2", a2Out, y2, prof2.kind, "continue");
       push("");
@@ -718,7 +722,7 @@
     $("btnGenTop").addEventListener("click", generate);
     $("btnCopyTop").addEventListener("click", copyGcode);
     $("btnDlTop").addEventListener("click", downloadNc);
-    ["childOd","wall","p1","p2","span","angle1","angle2","type1","type2","cut1","cut2","lengthMode","stepDeg","bothEnds","mmOut","zeroMode","feed","dwell","tool","retractZ","cutName","notes"].forEach((id) => {
+    ["childOd","wall","p1","p2","span","angle1","angle2","type1","type2","cut1","cut2","lengthMode","stepDeg","bothEnds","mmOut","flip2","zeroMode","feed","dwell","tool","retractZ","cutName","notes"].forEach((id) => {
       $(id).addEventListener("input", () => { syncEnds(); updateMmLabels(); });
       $(id).addEventListener("change", generate);
     });
