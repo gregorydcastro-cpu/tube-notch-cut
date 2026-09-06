@@ -1,39 +1,26 @@
-# Step File Tube Notcher
+# G-Line tube notchers
 
-Drop a round-tube STEP. Get MASSO G3 plasma rotary G-code. Torch follows the tube ID so it sits on the parent OD.
+MASSO G3 plasma rotary. **Y0 is the horn at the pipe end.** Cycle start must not rapid 19 mm in — that was making every bar short.
 
-## Grab it for the store
+## Files
 
-File: `index.html` in this repo.
+| File | What |
+|---|---|
+| `index.html` | Step File Tube Notcher — drop a STEP, get G-code |
+| `tube-notch-generator.html` | Tube Notch/cut — type the sizes |
 
-https://cdn.jsdelivr.net/gh/gregorydcastro-cpu/tube-notch-cut@main/index.html?v=7?v=7
+Both start End 1 on the horn at Y0, keep A moving forward (no rewind to 0), G21 first.
 
-GitHub Pages (one-time: repo Settings → Pages → Deploy from branch `main`, folder `/ (root)`):
+Cache-bust: `?v=8`
 
-https://gregorydcastro-cpu.github.io/tube-notch-cut/
+- https://cdn.jsdelivr.net/gh/gregorydcastro-cpu/tube-notch-cut@main/index.html?v=8
+- https://cdn.jsdelivr.net/gh/gregorydcastro-cpu/tube-notch-cut@main/tube-notch-generator.html?v=8
 
-## Put it under More on glineracing.store
+Have Grokbot put these under **More** on glineracing.store.
 
-1. Shopify admin → **Online Store → Pages → Add page**
-2. Title: `Step File Tube Notcher`
-3. Switch to the HTML (`<>`) editor and paste:
+## Shop use
 
-```html
-<iframe
-  src="https://cdn.jsdelivr.net/gh/gregorydcastro-cpu/tube-notch-cut@main/index.html?v=7?v=7"
-  title="Step File Tube Notcher"
-  style="width:100%;min-height:90vh;height:90vh;border:0;background:#121418"
-></iframe>
-```
-
-4. Save. The page URL is usually `/pages/step-file-tube-notcher`.
-5. **Online Store → Navigation** → the menu that has **More**.
-6. Add a link: **Step File Tube Notcher** → that page.
-7. Save the menu.
-
-## How to use
-
-1. Drop the STEP of the round tube you want to cut (not the whole chassis).
-2. Check OD, wall, length, and the pipes each end sits on.
-3. If STEP parent is 1.528 and the chassis tube is 1.5, type 1.5.
-4. Download .nc. MASSO: T112, zero far end at Y0, seam A0, chuck is End 2. Cut far end first.
+1. Zero the far end of the pipe. Seam is A0, end of tube is Y0.
+2. Cycle start should pierce at Y0, not run in.
+3. Do not re-zero Y at End 2. Touch off Z only.
+4. T112. Cut far end first.

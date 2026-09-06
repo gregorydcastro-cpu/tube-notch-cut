@@ -245,10 +245,11 @@
         <div class="field">
           <label for="zeroMode">Y zero</label>
           <select id="zeroMode">
-            <option value="end1" selected>End 1 far end at Y0, End 2 negative Y at chuck</option>
+            <option value="outer" selected>Horn at Y0 — zero the pipe end</option>
+            <option value="end1">Parent axis at Y0 (old, eats the saddle)</option>
             <option value="firstcut">Shift so End 1 pierce starts at Y0</option>
           </select>
-          <div class="hint">Zero on the far end. End 2 is negative Y at the chuck. Cut far end first.</div>
+          <div class="hint">Zero the pipe end. Cycle start should pierce at Y0, not run 19 mm in.</div>
         </div>
       </div>
       <div class="row">
@@ -496,11 +497,41 @@
       // End 1: y = -offset (toward chuck). End 2: y = -span + offset (toward far end).
       let y1 = off1.map((o) => -o);
       let y2 = off2.map((o) => -span + o);
-      if (p.zeroMode === "firstcut") {
+      if (p.zeroMode !== "firstcut") {
+        const shift = Math.max.apply(null, y1);
+        y1 = y1.map((y) => y - shift);
+        y2 = y2.map((y) => y - shift);
+      } else {
         const shift = y1[0];
         y1 = y1.map((y) => y - shift);
         y2 = y2.map((y) => y - shift);
       }
+      function indexOfMax(ys) {
+        let k = 0, best = -1e99;
+        const n = Math.max(1, ys.length - 1);
+        for (let i = 0; i < n; i++) if (ys[i] > best) { best = ys[i]; k = i; }
+        return k;
+      }
+      function rotateClosed(angles, ys, k) {
+        const unique = Math.max(1, angles.length - 1);
+        const a = [], y = [];
+        const start = ((k % unique) + unique) % unique;
+        for (let i = 0; i < unique; i++) {
+          const j = (start + i) % unique;
+          let ang = angles[j];
+          if (a.length && ang <= a[a.length - 1]) ang += 360;
+          a.push(ang);
+          y.push(ys[j]);
+        }
+        if (a.length) { a.push(a[0] + 360); y.push(y[0]); }
+        return { angles: a, ys: y };
+      }
+      const horn = indexOfMax(y1);
+      const r1 = rotateClosed(a1, y1, horn);
+      const r2 = rotateClosed(a2, y2, horn);
+      const a1Out = r1.angles;
+      y1 = r1.ys;
+      y2 = r2.ys;
 
       const d1 = max1 - min1;
       const d2 = max2 - min2;
@@ -514,6 +545,8 @@
       const lines = [];
       const push = (s) => lines.push(s);
       push("%");
+      push(p.mm ? "G21" : "G20");
+      push(p.mm ? "(UNITS = MILLIMETERS — G21)" : "(UNITS = INCHES — G20)");
       push("(Tube Notch/cut)");
       push("(Name of cut: " + p.name + ")");
       push("(Tube I'm cutting OD: " + p.childOdIn + " in / " + fmt(p.childOdIn * IN, 3) + " mm)");
@@ -532,14 +565,11 @@
       push("(Degrees of steps: " + step + ")");
       push("(Notes: " + (p.notes || "none") + ")");
       push("(Machine: MASSO G3 plasma rotary — A rotary degrees, Y along tube)");
-      push("(Y0: " + (p.zeroMode === "firstcut"
-        ? "End 1 pierce shifted to Y0. End 2 still negative Y at the chuck."
-        : "End 1 far/free end. Zero there. End 2 is negative Y at the chuck.") + ")");
+      push("(Y0: End 1 HORN at Y0. Zero the pipe end. Cycle start should NOT rapid off zero.)");
       push("(Cut order: End 1 far first, then End 2 toward chuck so the pipe does not drop)");
       push("(Pierce on path. No lead-in or lead-out.)");
       push("(Longest finished length: " + fmt(toOut(longest), dec) + " " + unit + ")");
       push("(Shortest finished length: " + fmt(toOut(shortest), dec) + " " + unit + ")");
-      push(p.mm ? "G21" : "G20");
       push("G90 G94");
       const toolWord = /^T/i.test(p.tool) ? p.tool.toUpperCase() : ("T" + p.tool);
       push(toolWord);
@@ -549,10 +579,17 @@
       const retractDec = p.mm ? 3 : 4;
       const retractWord = "G0 Z" + fmt(retractOut, retractDec);
 
-      function cutEnd(label, angArr, yArr, kind) {
+      function cutEnd(label, angArr, yArr, kind, mode) {
         push("");
         push("(" + label + " — " + kindLabel(kind) + (kind === "flush" || kind === "wrap" ? ", full 360 closed loop" : ", partial arc") + ")");
-        push("G0 A" + fmt(angArr[0], 3) + " " + axisY(yArr[0]));
+        if (mode === "continue") {
+          push("(Torch up. Move Y to End 2. A does not go back to 0.)");
+          push("(Do NOT re-zero Y here. Same Y0 as End 1. Touch off Z only.)");
+          push("G0 " + axisY(yArr[0]));
+          push("G0 A" + fmt(angArr[0], 3));
+        } else {
+          push("G0 A" + fmt(angArr[0], 3) + " " + axisY(yArr[0]));
+        }
         push(p.mOn);
         if (p.dwell > 0) push("G04 P" + p.dwell);
         for (let i = 1; i < angArr.length; i++) {
@@ -561,8 +598,11 @@
         push(p.mOff);
         push(retractWord);
       }
-      cutEnd("END 1", a1, y1, prof1.kind);
-      cutEnd("END 2", a2, y2, prof2.kind);
+      const a1Last = a1Out[a1Out.length - 1] || 0;
+      const a2Shift = a1Last - (r2.angles[0] || 0);
+      const a2Out = r2.angles.map((a) => a + a2Shift);
+      cutEnd("END 1", a1Out, y1, prof1.kind, "first");
+      cutEnd("END 2", a2Out, y2, prof2.kind, "continue");
       push("");
       push("M30");
       push("%");
