@@ -143,16 +143,16 @@
       <h2>Length</h2>
       <div class="row">
         <div class="field">
-          <label for="span">Tube length (inches)</label>
+          <label for="span">Parent center to center (inches)</label>
           <input id="span" type="number" step="0.001" value="24" />
-          <div class="hint"><span id="spanMm" class="mm"></span></div>
+          <div class="hint">Not the tape. Horn-to-horn is shorter. <span id="spanMm" class="mm"></span></div>
         </div>
         <div class="field">
-          <label for="lengthMode">That length is</label>
+          <label for="lengthMode">That number is</label>
           <select id="lengthMode">
-            <option value="cc" selected>Reference to reference</option>
-            <option value="longest">Finished longest</option>
-            <option value="crown">Finished shortest</option>
+            <option value="cc" selected>Parent center to center — not the tape</option>
+            <option value="longest">Finished longest (tape on the horns)</option>
+            <option value="crown">Finished shortest (crotch to crotch)</option>
           </select>
         </div>
       </div>
@@ -559,7 +559,7 @@
       else push("(End 2 parent OD: " + p.p2In + " in / " + fmt(p.p2In * IN, 3) + " mm @ " + p.angle2 + " deg, " + kindLabel(prof2.kind) + ")");
       push("(Length entered: " + p.lengthIn + " in / " + fmt(lengthMm, 3) + " mm — " + (
         p.lengthMode === "longest" ? "finished longest" :
-        p.lengthMode === "crown" ? "finished shortest" : "reference to reference"
+        p.lengthMode === "crown" ? "finished shortest" : "parent center to center"
       ) + ")");
       push("(Reference span: " + fmt(span / IN, 4) + " in / " + fmt(span, 3) + " mm)");
       push("(Both ends the same: " + (p.both ? "Yes" : "No") + ")");
