@@ -193,7 +193,13 @@
           </select>
         </div>
       </div>
-      <label class="check"><input id="bothEnds" type="checkbox" checked /> Both ends the same?</label>
+      <div class="row">
+        <div class="field">
+          <label for="addLen">Add length (inches)</label>
+          <input id="addLen" type="number" step="0.0625" min="0" value="0" />
+          <div class="hint">Last bar taped short. Extra goes in the span.</div>
+        </div>
+      </div>
       <label class="check"><input id="mmOut" type="checkbox" checked /> G-code in millimeters (G21) — keep this on for MASSO</label>
       <label class="check"><input id="flip2" type="checkbox" checked /> Flip End 2 notch 180° (A keeps going forward — no rewind to 0)</label>
 
@@ -283,7 +289,8 @@
         <div class="field">
           <label for="zeroMode">Y zero</label>
           <select id="zeroMode">
-            <option value="end1" selected>End 1 far end at Y0, End 2 negative Y at chuck</option>
+            <option value="outer" selected>Horn at Y0 — zero the pipe end</option>
+            <option value="end1">Parent axis at Y0 (old, eats 19 mm)</option>
             <option value="firstcut">Shift so End 1 pierce starts at Y0</option>
           </select>
           <div class="hint">Zero on the far end. End 2 is negative Y at the chuck. Cut far end first.</div>
@@ -885,7 +892,9 @@ var StepCam = (() => {
         retractZ: num("retractZ"),
         mOn: $("mOn").value.trim() || "M3",
         mOff: $("mOff").value.trim() || "M5",
-        notes: $("notes").value.trim()
+        notes: $("notes").value.trim(),
+        addLenIn: $("addLen") ? num("addLen") : 0.5,
+        flip2: $("flip2") ? $("flip2").checked : true,
       };
     }
 
@@ -938,6 +947,7 @@ var StepCam = (() => {
       if (p.lengthMode === "longest") span = lengthMm + min1 + min2;
       else if (p.lengthMode === "crown") span = lengthMm + max1 + max2;
       else span = lengthMm;
+      span += Math.max(0, p.addLenIn || 0) * IN;
 
       if (span < max1 + max2 - 1e-6) {
         errors.push("That length is too short for these two cuts.");
@@ -949,11 +959,41 @@ var StepCam = (() => {
       // End 1: y = -offset (toward chuck). End 2: y = -span + offset (toward far end).
       let y1 = off1.map((o) => -o);
       let y2 = off2.map((o) => -span + o);
-      if (p.zeroMode === "firstcut") {
+      if (p.zeroMode !== "firstcut") {
+        const shift = Math.max.apply(null, y1);
+        y1 = y1.map((y) => y - shift);
+        y2 = y2.map((y) => y - shift);
+      } else {
         const shift = y1[0];
         y1 = y1.map((y) => y - shift);
         y2 = y2.map((y) => y - shift);
       }
+      function indexOfMax(ys) {
+        let k = 0, best = -1e99;
+        const n = Math.max(1, ys.length - 1);
+        for (let i = 0; i < n; i++) if (ys[i] > best) { best = ys[i]; k = i; }
+        return k;
+      }
+      function rotateClosed(angles, ys, k) {
+        const unique = Math.max(1, angles.length - 1);
+        const a = [], y = [];
+        const start = ((k % unique) + unique) % unique;
+        for (let i = 0; i < unique; i++) {
+          const j = (start + i) % unique;
+          let ang = angles[j];
+          if (a.length && ang <= a[a.length - 1]) ang += 360;
+          a.push(ang);
+          y.push(ys[j]);
+        }
+        if (a.length) { a.push(a[0] + 360); y.push(y[0]); }
+        return { angles: a, ys: y };
+      }
+      const horn = indexOfMax(y1);
+      const r1 = rotateClosed(a1, y1, horn);
+      const r2 = rotateClosed(a2, y2, horn);
+      const a1Out = r1.angles;
+      y1 = r1.ys;
+      y2 = r2.ys;
 
       const d1 = max1 - min1;
       const d2 = max2 - min2;
@@ -992,9 +1032,7 @@ var StepCam = (() => {
       push("(Notes: " + (p.notes || "none") + ")");
       push("(Machine: MASSO G3 plasma rotary — A rotary degrees, Y along tube)");
       push("(T112 plasma. Do not use T111.)");
-      push("(Y0: " + (p.zeroMode === "firstcut"
-        ? "End 1 pierce shifted to Y0. End 2 still negative Y at the chuck."
-        : "End 1 far/free end. Zero there. End 2 is negative Y at the chuck.") + ")");
+      push("(Y0: End 1 HORN at Y0. Zero the pipe end. Cycle start should NOT rapid 19 mm in.)");
       push("(Cut order: End 1 far first, then End 2 toward chuck so the pipe does not drop)");
       push("(Pierce on path. No lead-in or lead-out.)");
       push("(Longest finished length: " + fmt(toOut(longest), dec) + " " + unit + ")");
@@ -1013,6 +1051,7 @@ var StepCam = (() => {
         push("(" + label + " — " + kindLabel(kind) + (kind === "flush" || kind === "wrap" ? ", full 360 closed loop" : ", partial arc") + ")");
         if (mode === "continue") {
           push("(Torch up. Move Y to End 2. A does not go back to 0.)");
+          push("(Do NOT re-zero Y here. Same Y0 as End 1. Touch off Z only.)");
           push("G0 " + axisY(yArr[0]));
           push("G0 A" + fmt(angArr[0], 3));
         } else {
@@ -1026,10 +1065,10 @@ var StepCam = (() => {
         push(p.mOff);
         push(retractWord);
       }
-      const a1Last = a1[a1.length - 1] || 0;
-      const a2Shift = a1Last + (p.flip2 ? 180 : 0);
-      const a2Out = a2.map((a) => a + a2Shift);
-      cutEnd("END 1", a1, y1, prof1.kind, "first");
+      const a1Last = a1Out[a1Out.length - 1] || 0;
+      const a2Shift = a1Last + (p.flip2 ? 180 : 0) - (r2.angles[0] || 0);
+      const a2Out = r2.angles.map((a) => a + a2Shift);
+      cutEnd("END 1", a1Out, y1, prof1.kind, "first");
       cutEnd("END 2", a2Out, y2, prof2.kind, "continue");
       push("");
       push("M30");
@@ -1146,7 +1185,7 @@ var StepCam = (() => {
     $("btnGenTop").addEventListener("click", generate);
     $("btnCopyTop").addEventListener("click", copyGcode);
     $("btnDlTop").addEventListener("click", downloadNc);
-    ["childOd","wall","p1","p2","span","angle1","angle2","type1","type2","cut1","cut2","lengthMode","stepDeg","bothEnds","mmOut","flip2","zeroMode","feed","dwell","tool","retractZ","cutName","notes"].forEach((id) => {
+    ["childOd","wall","p1","p2","span","angle1","angle2","type1","type2","cut1","cut2","lengthMode","stepDeg","bothEnds","mmOut","flip2","addLen","zeroMode","feed","dwell","tool","retractZ","cutName","notes"].forEach((id) => {
       $(id).addEventListener("input", () => { syncEnds(); updateMmLabels(); });
       $(id).addEventListener("change", generate);
     });
