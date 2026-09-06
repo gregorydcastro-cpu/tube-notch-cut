@@ -196,7 +196,8 @@
       <div class="row">
         <div class="field">
           <label for="addLen">Add length (inches)</label>
-          <input id="addLen" type="number" step="0.0625" min="0" value="0" />
+          <input id="addLen" type="number" step="0.0625" min="0" value="0.5625" />
+          <div class="hint">Last bar was 9/16 short with notches in the right spots. Extra goes in the span.</div>
           <div class="hint">Last bar taped short. Extra goes in the span.</div>
         </div>
       </div>
@@ -893,7 +894,7 @@ var StepCam = (() => {
         mOn: $("mOn").value.trim() || "M3",
         mOff: $("mOff").value.trim() || "M5",
         notes: $("notes").value.trim(),
-        addLenIn: $("addLen") ? num("addLen") : 0.5,
+        addLenIn: $("addLen") ? num("addLen") : 0.5625,
         flip2: $("flip2") ? $("flip2").checked : true,
       };
     }

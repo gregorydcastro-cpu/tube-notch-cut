@@ -156,7 +156,13 @@
           </select>
         </div>
       </div>
-      <label class="check"><input id="bothEnds" type="checkbox" /> Both ends the same?</label>
+      <div class="row">
+        <div class="field">
+          <label for="addLen">Add length (inches)</label>
+          <input id="addLen" type="number" step="0.0625" min="0" value="0.5625" />
+          <div class="hint">Last bar was 9/16 short with notches in the right spots. Extra goes in the span.</div>
+        </div>
+      </div>
       <label class="check"><input id="mmOut" type="checkbox" checked /> G-code in millimeters (G21) — keep this on for MASSO</label>
       <label class="check"><input id="flip2" type="checkbox" checked /> Flip End 2 notch 180° (A keeps going forward — no rewind to 0)</label>
 
@@ -435,7 +441,8 @@
         retractZ: num("retractZ"),
         mOn: $("mOn").value.trim() || "M3",
         mOff: $("mOff").value.trim() || "M5",
-        notes: $("notes").value.trim()
+        notes: $("notes").value.trim(),
+        addLenIn: $("addLen") ? num("addLen") : 0.5625,
       };
     }
 
@@ -488,6 +495,7 @@
       if (p.lengthMode === "longest") span = lengthMm + min1 + min2;
       else if (p.lengthMode === "crown") span = lengthMm + max1 + max2;
       else span = lengthMm;
+      span += Math.max(0, Number(p.addLenIn) || 0) * IN;
 
       if (span < max1 + max2 - 1e-6) {
         errors.push("That length is too short for these two cuts.");
@@ -562,6 +570,7 @@
         p.lengthMode === "crown" ? "finished shortest" : "parent center to center"
       ) + ")");
       push("(Reference span: " + fmt(span / IN, 4) + " in / " + fmt(span, 3) + " mm)");
+      push("(Length add-on: " + (p.addLenIn || 0) + " in — last bar 9/16 short, extra in the span)");
       push("(Both ends the same: " + (p.both ? "Yes" : "No") + ")");
       push("(G-code units: " + unit + ")");
       push("(Degrees of steps: " + step + ")");
@@ -722,7 +731,7 @@
     $("btnGenTop").addEventListener("click", generate);
     $("btnCopyTop").addEventListener("click", copyGcode);
     $("btnDlTop").addEventListener("click", downloadNc);
-    ["childOd","wall","p1","p2","span","angle1","angle2","type1","type2","cut1","cut2","lengthMode","stepDeg","bothEnds","mmOut","flip2","zeroMode","feed","dwell","tool","retractZ","cutName","notes"].forEach((id) => {
+    ["childOd","wall","p1","p2","span","angle1","angle2","type1","type2","cut1","cut2","lengthMode","stepDeg","bothEnds","mmOut","flip2","addLen","zeroMode","feed","dwell","tool","retractZ","cutName","notes"].forEach((id) => {
       $(id).addEventListener("input", () => { syncEnds(); updateMmLabels(); });
       $(id).addEventListener("change", generate);
     });
