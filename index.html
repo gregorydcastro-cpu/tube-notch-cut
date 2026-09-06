@@ -180,21 +180,21 @@
       <h2>Length</h2>
       <div class="row">
         <div class="field">
-          <label for="span">Tube length (inches)</label>
+          <label for="span">Parent center to center (inches)</label>
           <input id="span" type="number" step="0.001" value="29.8731" />
-          <div class="hint"><span id="spanMm" class="mm"></span></div>
+          <div class="hint">Not the tape. Horn-to-horn is shorter. <span id="spanMm" class="mm"></span></div>
         </div>
         <div class="field">
           <label for="lengthMode">That length is</label>
           <select id="lengthMode">
-            <option value="cc" selected>Reference to reference</option>
-            <option value="longest">Finished longest</option>
-            <option value="crown">Finished shortest</option>
+            <option value="cc" selected>Parent center to center — not the tape</option>
+            <option value="longest">Finished longest (tape on the horns)</option>
+            <option value="crown">Finished shortest (crotch to crotch)</option>
           </select>
         </div>
       </div>
       <label class="check"><input id="bothEnds" type="checkbox" checked /> Both ends the same?</label>
-      <label class="check"><input id="mmOut" type="checkbox" checked /> G-code in millimeters</label>
+      <label class="check"><input id="mmOut" type="checkbox" checked /> G-code in millimeters (G21) — keep this on for MASSO</label>
 
       <h2>End 1 — far / free end (zero here, cut first)</h2>
       <div class="end-card">
@@ -340,6 +340,7 @@
 
   <script>
 "use strict";
+"use strict";
 var StepCam = (() => {
   var __defProp = Object.defineProperty;
   var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -400,11 +401,14 @@ var StepCam = (() => {
     step: 1,
     feed: 385,
     dwell: 200,
-    zeroMode: "end1",
+    zeroMode: "outer",
     tool: "T112",
     retractZ: 30,
     mOn: "M3",
     mOff: "M5",
+    flip2: true,
+    invert2: true,
+    kerfIn: 0,
     notes: "G-line cage24 back angle bar. Cut so the ID sits on the parent OD. Both ends wrap. Seam A0 = in-plane of the parent axes. Zero the far end (End 1) at Y0; chuck is End 2 at negative Y. Cut far end first so the pipe does not drop."
   };
 
@@ -666,6 +670,14 @@ var StepCam = (() => {
     const lengthMm = e1 && e2 ? Math.abs(e2.s - e1.s) : childScore.span;
     if (!e1) warnings.push("No parent pipe at End 1 \u2014 treating as a square cut.");
     if (!e2) warnings.push("No parent pipe at End 2 \u2014 treating as a square cut.");
+    const vertexS = [];
+    for (const e of ents.values()) {
+      if (e.type !== "VERTEX_POINT") continue;
+      const pid = refs(e.args)[0];
+      if (!pid) continue;
+      vertexS.push(dot(sub(vecOf(ents, pid), childO), childA));
+    }
+    const overallMm = vertexS.length >= 2 ? Math.max(...vertexS) - Math.min(...vertexS) : 0;
     const both = type1 === type2 && Math.abs(p1In - p2In) < 0.02 && Math.abs(angle1 - angle2) < 0.2;
     let name = fileName.replace(/\.(step|stp)$/i, "").replace(/[_-]+/g, " ");
     const productNames = [];
@@ -683,6 +695,7 @@ var StepCam = (() => {
     const childOdIn = snapShop(inch(odMm));
     const wallIn = +inch(wallMm).toFixed(3);
     const lengthIn = inch(lengthMm);
+    const overallIn = overallMm > 1 ? inch(overallMm) : 0;
     const wrap1 = type1 === "saddle" && p1In + 1e-6 >= childOdIn - 0.05 ? "wrap" : type1 === "saddle" ? "auto" : "auto";
     const wrap2 = type2 === "saddle" && p2In + 1e-6 >= childOdIn - 0.05 ? "wrap" : type2 === "saddle" ? "auto" : "auto";
     const summary = [
@@ -690,7 +703,8 @@ var StepCam = (() => {
       `${childOdIn} in OD \xD7 ${wallIn} in wall`,
       e1 ? `End 1 sits on ${p1In} in @ ${angle1}\xB0` : "End 1 square cut",
       e2 ? `End 2 sits on ${p2In} in @ ${angle2}\xB0` : "End 2 square cut",
-      lengthMm ? `${lengthIn} in reference-to-reference` : "",
+      lengthMm ? `${lengthIn} in parent center to center` : "",
+      overallIn ? `${overallIn} in overall (tape on the horns)` : "",
       foundOdIn.length ? `found \xD8 ${foundOdIn.join(", ")} in` : ""
     ].filter(Boolean).join(" \xB7 ");
     const notes = `From ${fileName}. Cut so the ID sits on the parent OD. Zero End 1 at Y0; chuck is End 2, negative Y. Cut far end first.`;
@@ -700,6 +714,7 @@ var StepCam = (() => {
       childOdIn,
       wallIn,
       lengthIn,
+      overallIn,
       p1In,
       p2In,
       angle1,
@@ -950,6 +965,8 @@ var StepCam = (() => {
       const lines = [];
       const push = (s) => lines.push(s);
       push("%");
+      push(p.mm ? "G21" : "G20");
+      push(p.mm ? "(UNITS = MILLIMETERS — G21)" : "(UNITS = INCHES — G20)");
       push("(Step File Tube Notcher)");
       push("(Name of cut: " + p.name + ")");
       push("(GlineRacing · glineracing.store · More tab)");
@@ -979,7 +996,6 @@ var StepCam = (() => {
       push("(Pierce on path. No lead-in or lead-out.)");
       push("(Longest finished length: " + fmt(toOut(longest), dec) + " " + unit + ")");
       push("(Shortest finished length: " + fmt(toOut(shortest), dec) + " " + unit + ")");
-      push(p.mm ? "G21" : "G20");
       push("G90 G94");
       const toolWord = /^T/i.test(p.tool) ? p.tool.toUpperCase() : ("T" + p.tool);
       push(toolWord);
