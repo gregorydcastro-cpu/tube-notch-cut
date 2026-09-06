@@ -195,6 +195,7 @@
       </div>
       <label class="check"><input id="bothEnds" type="checkbox" checked /> Both ends the same?</label>
       <label class="check"><input id="mmOut" type="checkbox" checked /> G-code in millimeters (G21) — keep this on for MASSO</label>
+      <label class="check"><input id="flip2" type="checkbox" checked /> Flip End 2 notch 180° (A keeps going forward — no rewind to 0)</label>
 
       <h2>End 1 — far / free end (zero here, cut first)</h2>
       <div class="end-card">
@@ -875,6 +876,7 @@ var StepCam = (() => {
         lengthMode: $("lengthMode").value,
         both: $("bothEnds").checked,
         mm: $("mmOut").checked,
+        flip2: $("flip2") ? $("flip2").checked : true,
         step: num("stepDeg"),
         feed: num("feed"),
         dwell: Math.round(num("dwell") || 0),
@@ -984,6 +986,7 @@ var StepCam = (() => {
       ) + ")");
       push("(Reference span: " + fmt(span / IN, 4) + " in / " + fmt(span, 3) + " mm)");
       push("(Both ends the same: " + (p.both ? "Yes" : "No") + ")");
+      push("(End 2 notch: " + (p.flip2 ? "FLIPPED +180 deg, A keeps going forward (no rewind to 0)" : "same clocking, A keeps going forward (no rewind to 0)") + ")");
       push("(G-code units: " + unit + ")");
       push("(Degrees of steps: " + step + ")");
       push("(Notes: " + (p.notes || "none") + ")");
@@ -1005,10 +1008,16 @@ var StepCam = (() => {
       const retractDec = p.mm ? 3 : 4;
       const retractWord = "G0 Z" + fmt(retractOut, retractDec);
 
-      function cutEnd(label, angArr, yArr, kind) {
+      function cutEnd(label, angArr, yArr, kind, mode) {
         push("");
         push("(" + label + " — " + kindLabel(kind) + (kind === "flush" || kind === "wrap" ? ", full 360 closed loop" : ", partial arc") + ")");
-        push("G0 A" + fmt(angArr[0], 3) + " " + axisY(yArr[0]));
+        if (mode === "continue") {
+          push("(Torch up. Move Y to End 2. A does not go back to 0.)");
+          push("G0 " + axisY(yArr[0]));
+          push("G0 A" + fmt(angArr[0], 3));
+        } else {
+          push("G0 A" + fmt(angArr[0], 3) + " " + axisY(yArr[0]));
+        }
         push(p.mOn);
         if (p.dwell > 0) push("G04 P" + p.dwell);
         for (let i = 1; i < angArr.length; i++) {
@@ -1017,8 +1026,11 @@ var StepCam = (() => {
         push(p.mOff);
         push(retractWord);
       }
-      cutEnd("END 1", a1, y1, prof1.kind);
-      cutEnd("END 2", a2, y2, prof2.kind);
+      const a1Last = a1[a1.length - 1] || 0;
+      const a2Shift = a1Last + (p.flip2 ? 180 : 0);
+      const a2Out = a2.map((a) => a + a2Shift);
+      cutEnd("END 1", a1, y1, prof1.kind, "first");
+      cutEnd("END 2", a2Out, y2, prof2.kind, "continue");
       push("");
       push("M30");
       push("%");
@@ -1134,7 +1146,7 @@ var StepCam = (() => {
     $("btnGenTop").addEventListener("click", generate);
     $("btnCopyTop").addEventListener("click", copyGcode);
     $("btnDlTop").addEventListener("click", downloadNc);
-    ["childOd","wall","p1","p2","span","angle1","angle2","type1","type2","cut1","cut2","lengthMode","stepDeg","bothEnds","mmOut","zeroMode","feed","dwell","tool","retractZ","cutName","notes"].forEach((id) => {
+    ["childOd","wall","p1","p2","span","angle1","angle2","type1","type2","cut1","cut2","lengthMode","stepDeg","bothEnds","mmOut","flip2","zeroMode","feed","dwell","tool","retractZ","cutName","notes"].forEach((id) => {
       $(id).addEventListener("input", () => { syncEnds(); updateMmLabels(); });
       $(id).addEventListener("change", generate);
     });

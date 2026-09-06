@@ -6,7 +6,7 @@ Drop a round-tube STEP. Get MASSO G3 plasma rotary G-code. Torch follows the tub
 
 File: `index.html` in this repo.
 
-https://cdn.jsdelivr.net/gh/gregorydcastro-cpu/tube-notch-cut@main/index.html?v=5?v=5
+https://cdn.jsdelivr.net/gh/gregorydcastro-cpu/tube-notch-cut@main/index.html?v=6?v=6
 
 GitHub Pages (one-time: repo Settings → Pages → Deploy from branch `main`, folder `/ (root)`):
 
@@ -20,7 +20,7 @@ https://gregorydcastro-cpu.github.io/tube-notch-cut/
 
 ```html
 <iframe
-  src="https://cdn.jsdelivr.net/gh/gregorydcastro-cpu/tube-notch-cut@main/index.html?v=5?v=5"
+  src="https://cdn.jsdelivr.net/gh/gregorydcastro-cpu/tube-notch-cut@main/index.html?v=6?v=6"
   title="Step File Tube Notcher"
   style="width:100%;min-height:90vh;height:90vh;border:0;background:#121418"
 ></iframe>
