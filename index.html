@@ -152,6 +152,10 @@
         <strong>Drop a .step here, or tap to pick</strong>
         <span class="hint">Reads the tube and writes G-code. Preloaded: back angle bar.</span>
       </label>
+      <div class="btns" style="margin-top:-8px">
+        <button type="button" class="secondary" id="btnHead">Load head bar 1.75 in</button>
+        <button type="button" class="secondary" id="btnBack">Load back angle 1.5 in</button>
+      </div>
       <p class="step-sum" id="stepSum">Preloaded from back angle bar1.step — 1.5 in × 0.083 wall, sits on 1.5 in both ends at 76.45°, 29.873 in reference-to-reference.</p>
       <h2>Name of cut</h2>
       <div class="field">
@@ -492,25 +496,77 @@ var StepCam = (() => {
     }
     return Math.abs(dot(sub(o2, o1), c)) / cl;
   }
+  var STOCK = [0.75, 1, 1.125, 1.25, 1.375, 1.5, 1.625, 1.75, 2, 2.25, 2.5, 3];
+  function snapShop(inVal) {
+    const hit = STOCK.find((s) => Math.abs(s - inVal) < 0.04);
+    return hit ?? +inVal.toFixed(4);
+  }
+  function nameOdHints(fileName) {
+    const hints = [];
+    for (const m of fileName.matchAll(/(\d+\.\d+)/g)) {
+      const n = parseFloat(m[1]);
+      if (n >= 0.5 && n <= 6) hints.push(n);
+    }
+    if (/1\s*-?\s*3\s*\/\s*4|1\s+3\/4/i.test(fileName)) hints.push(1.75);
+    if (/(^|[^\d])175([^\d]|$)/.test(fileName.replace(/\.\d+/, ""))) hints.push(1.75);
+    return hints;
+  }
+  function unitMm(text, radii) {
+    const u = text.toUpperCase();
+    if (/CONVERSION_BASED_UNIT\s*\(\s*'INCH'/.test(u) || /\bSI_UNIT\s*\(\s*\*\s*,\s*\.INCH\./.test(u)) {
+      return { factor: 25.4, label: "inch" };
+    }
+    if (/SI_UNIT\s*\(\s*\.MILLI\.\s*,\s*\.METRE\./.test(u)) {
+      return { factor: 1, label: "mm" };
+    }
+    if (/SI_UNIT\s*\(\s*\$\s*,\s*\.METRE\./.test(u) || /SI_UNIT\s*\(\s*\.METRE\./.test(u)) {
+      return { factor: 1e3, label: "m" };
+    }
+    const maxR = Math.max(0, ...radii);
+    if (maxR > 0 && maxR < 8) return { factor: 25.4, label: "inch (guessed)" };
+    return { factor: 1, label: "mm" };
+  }
   function parseTubeStep(text, fileName) {
     const warnings = [];
-    const ents = parseEntities(text);
-    const cyls = [];
-    for (const [, e] of ents) {
-      if (e.type !== "CYLINDRICAL_SURFACE") continue;
-      const rfs = refs(e.args);
-      const r = nums(e.args).at(-1);
-      if (!rfs.length || r == null || !(r > 0.4)) continue;
-      const ax = ents.get(rfs[0]);
-      if (!ax) continue;
-      const ar = refs(ax.args);
-      if (ar.length < 2) continue;
-      cyls.push({ r, o: vecOf(ents, ar[0]), a: nrm(vecOf(ents, ar[1])) });
+    if (!/ISO-10303-21/i.test(text) && !/CYLINDRICAL_SURFACE|CIRCLE\s*\(/i.test(text)) {
+      throw new Error("That file does not look like a STEP. Export .step / .stp from CAD.");
     }
-    if (cyls.length < 1) {
+    const ents = parseEntities(text);
+    const rawCyls = [];
+    const pushCyl = (r, placementId) => {
+      if (r == null || !(r > 0.12) || placementId == null) return;
+      const ax = ents.get(placementId);
+      if (!ax) return;
+      const ar = refs(ax.args);
+      if (ar.length < 2) return;
+      rawCyls.push({ r, o: vecOf(ents, ar[0]), a: nrm(vecOf(ents, ar[1])) });
+    };
+    for (const [, e] of ents) {
+      if (e.type === "CYLINDRICAL_SURFACE") {
+        const rfs = refs(e.args);
+        pushCyl(nums(e.args).at(-1), rfs[0]);
+      } else if (e.type === "CIRCLE") {
+        const rfs = refs(e.args);
+        pushCyl(nums(e.args).at(-1), rfs[0]);
+      }
+    }
+    if (rawCyls.length < 1) {
       throw new Error(
-        "No round tubes in that STEP. Export a coped round pipe (cylinders for the tube and the pipes it sits on)."
+        "No round tubes in that STEP. Export a coped round pipe (not a mesh / STL save-as-STEP)."
       );
+    }
+    const units = unitMm(text, rawCyls.map((c) => c.r));
+    const f = units.factor;
+    const cyls = rawCyls.map((c) => ({
+      r: c.r * f,
+      o: mul(c.o, f),
+      a: c.a
+    }));
+    const points = [];
+    for (const e of ents.values()) {
+      if (e.type !== "CARTESIAN_POINT") continue;
+      const n = nums(e.args);
+      if (n.length >= 3) points.push(mul([n[0], n[1], n[2]], f));
     }
     const used = /* @__PURE__ */ new Set();
     const clusters = [];
@@ -520,44 +576,82 @@ var StepCam = (() => {
       used.add(i);
       for (let j = i + 1; j < cyls.length; j++) {
         if (used.has(j)) continue;
-        if (absDot(cyls[i].a, cyls[j].a) < 0.999) continue;
-        if (axisDist(cyls[i].o, cyls[i].a, cyls[j].o, cyls[j].a) > 0.8) continue;
+        if (absDot(cyls[i].a, cyls[j].a) < 0.995) continue;
+        if (axisDist(cyls[i].o, cyls[i].a, cyls[j].o, cyls[j].a) > 1.2) continue;
         group.push(cyls[j]);
         used.add(j);
       }
       clusters.push(group);
     }
-    clusters.sort((a, b) => Math.max(...b.map((c) => c.r)) - Math.max(...a.map((c) => c.r)));
-    let child = clusters.find((g) => {
-      const rs = [...new Set(g.map((c) => +c.r.toFixed(3)))];
-      return rs.length >= 2;
-    });
-    if (!child) {
-      child = clusters[0];
-      warnings.push("No inner wall in the STEP \u2014 wall thickness was guessed.");
-    }
-    const childRs = [...new Set(child.map((c) => c.r))].sort((a, b) => b - a);
-    const odMm = childRs[0] * 2;
-    const idMm = childRs.length > 1 ? childRs[1] * 2 : odMm - 2 * 2.1082;
-    const wallMm = (odMm - idMm) / 2;
-    const childO = child[0].o;
-    const childA = child[0].a;
-    const parents = clusters.filter((g) => g !== child);
-    const parentEnds = [];
-    for (const g of parents) {
-      const r = Math.max(...g.map((c) => c.r));
+    function spanOf(g) {
       const a = g[0].a;
       const o = g[0].o;
+      let min = Infinity;
+      let max = -Infinity;
+      const src = points.length ? points : g.map((c) => c.o);
+      for (const p of src) {
+        const s = dot(sub(p, o), a);
+        if (s < min) min = s;
+        if (s > max) max = s;
+      }
+      return Number.isFinite(min) ? max - min : 0;
+    }
+    const scored = clusters.map((g) => {
+      const rs = [...new Set(g.map((c) => +c.r.toFixed(3)))].sort((a, b) => b - a);
+      return {
+        g,
+        od: rs[0] * 2,
+        id: (rs[1] ?? rs[0] - 2.1082) * 2,
+        pair: rs.length >= 2,
+        span: spanOf(g)
+      };
+    });
+    const foundOdIn = [
+      ...new Set(scored.map((s) => snapShop(inch(s.od, 4))))
+    ].sort((a, b) => b - a);
+    const hints = nameOdHints(fileName);
+    scored.sort((a, b) => {
+      const hintA = hints.some((h) => Math.abs(inch(a.od) - h) < 0.06) ? 1 : 0;
+      const hintB = hints.some((h) => Math.abs(inch(b.od) - h) < 0.06) ? 1 : 0;
+      if (hintB !== hintA) return hintB - hintA;
+      if (a.pair !== b.pair) return Number(b.pair) - Number(a.pair);
+      if (Math.abs(b.span - a.span) > 8) return b.span - a.span;
+      return b.od - a.od;
+    });
+    const childScore = scored[0];
+    if (!childScore) {
+      throw new Error("Could not find a tube axis in that STEP.");
+    }
+    const child = childScore.g;
+    if (!childScore.pair) warnings.push("No inner wall in the STEP \u2014 wall was guessed.");
+    if (hints.length && Math.abs(snapShop(inch(childScore.od)) - hints[0]) > 0.08) {
+      warnings.push(
+        `Filename looks like ${hints[0]} in but the solid read ${snapShop(inch(childScore.od))} in.`
+      );
+    }
+    const odMm = childScore.od;
+    const idMm = childScore.id;
+    const wallMm = Math.max(0.5, (odMm - idMm) / 2);
+    const childO = child[0].o;
+    const childA = child[0].a;
+    const parents = scored.filter((s) => s.g !== child);
+    const parentEnds = [];
+    for (const s of parents) {
+      const a = s.g[0].a;
+      const o = s.g[0].o;
       const ang = Math.acos(Math.min(1, absDot(childA, a))) * (180 / Math.PI);
       if (ang < 8) continue;
-      const s = closestS(childO, childA, o, a);
-      parentEnds.push({ r, angle: +ang.toFixed(2), s });
+      parentEnds.push({
+        r: s.od / 2,
+        angle: +ang.toFixed(2),
+        s: closestS(childO, childA, o, a)
+      });
     }
     parentEnds.sort((a, b) => a.s - b.s);
     const ends = [];
     for (const p of parentEnds) {
       const last = ends[ends.length - 1];
-      if (last && Math.abs(p.s - last.s) < 2) {
+      if (last && Math.abs(p.s - last.s) < 3) {
         if (p.r > last.r) ends[ends.length - 1] = p;
       } else ends.push(p);
     }
@@ -565,11 +659,11 @@ var StepCam = (() => {
     const e2 = ends.length > 1 ? ends[ends.length - 1] : void 0;
     const type1 = e1 ? "saddle" : "flush";
     const type2 = e2 ? "saddle" : "flush";
-    const p1In = e1 ? inch(e1.r * 2) : 0;
-    const p2In = e2 ? inch(e2.r * 2) : e1 ? inch(e1.r * 2) : 0;
+    const p1In = e1 ? snapShop(inch(e1.r * 2)) : 0;
+    const p2In = e2 ? snapShop(inch(e2.r * 2)) : e1 ? snapShop(inch(e1.r * 2)) : 0;
     const angle1 = e1 ? e1.angle : 90;
     const angle2 = e2 ? e2.angle : angle1;
-    const lengthMm = e1 && e2 ? Math.abs(e2.s - e1.s) : 0;
+    const lengthMm = e1 && e2 ? Math.abs(e2.s - e1.s) : childScore.span;
     if (!e1) warnings.push("No parent pipe at End 1 \u2014 treating as a square cut.");
     if (!e2) warnings.push("No parent pipe at End 2 \u2014 treating as a square cut.");
     const both = type1 === type2 && Math.abs(p1In - p2In) < 0.02 && Math.abs(angle1 - angle2) < 0.2;
@@ -586,16 +680,18 @@ var StepCam = (() => {
     const fileKey = fileName.toLowerCase().replace(/\.(step|stp)$/i, "");
     const named = productNames.find((n) => fileKey.includes(n.toLowerCase().slice(0, 8))) || productNames.find((n) => !/coped|fishmouth|cage/i.test(n)) || productNames[0];
     if (named) name = named;
-    const childOdIn = inch(odMm);
-    const wallIn = inch(wallMm);
+    const childOdIn = snapShop(inch(odMm));
+    const wallIn = +inch(wallMm).toFixed(3);
     const lengthIn = inch(lengthMm);
-    const wrap1 = type1 === "saddle" && p1In + 1e-6 >= childOdIn ? "wrap" : type1 === "saddle" ? "auto" : "auto";
-    const wrap2 = type2 === "saddle" && p2In + 1e-6 >= childOdIn ? "wrap" : type2 === "saddle" ? "auto" : "auto";
+    const wrap1 = type1 === "saddle" && p1In + 1e-6 >= childOdIn - 0.05 ? "wrap" : type1 === "saddle" ? "auto" : "auto";
+    const wrap2 = type2 === "saddle" && p2In + 1e-6 >= childOdIn - 0.05 ? "wrap" : type2 === "saddle" ? "auto" : "auto";
     const summary = [
+      `Loaded ${fileName}`,
       `${childOdIn} in OD \xD7 ${wallIn} in wall`,
       e1 ? `End 1 sits on ${p1In} in @ ${angle1}\xB0` : "End 1 square cut",
       e2 ? `End 2 sits on ${p2In} in @ ${angle2}\xB0` : "End 2 square cut",
-      lengthMm ? `${lengthIn} in reference-to-reference` : ""
+      lengthMm ? `${lengthIn} in reference-to-reference` : "",
+      foundOdIn.length ? `found \xD8 ${foundOdIn.join(", ")} in` : ""
     ].filter(Boolean).join(" \xB7 ");
     const notes = `From ${fileName}. Cut so the ID sits on the parent OD. Zero End 1 at Y0; chuck is End 2, negative Y. Cut far end first.`;
     return {
@@ -615,7 +711,9 @@ var StepCam = (() => {
       both,
       notes,
       summary,
-      warnings
+      warnings,
+      foundOdIn,
+      units: units.label
     };
   }
   function jobFromStep(read, machine) {
@@ -640,7 +738,6 @@ var StepCam = (() => {
   }
   return __toCommonJS(step_exports);
 })();
-
     const IN = 25.4;
     const $ = (id) => document.getElementById(id);
 
@@ -1050,8 +1147,8 @@ var StepCam = (() => {
     }
     function loadStepFile(file) {
       if (!file) return;
-      if (!/\.(step|stp)$/i.test(file.name)) {
-        $("stepSum").textContent = "Use a .step or .stp file.";
+      if (file.size > 40e6) {
+        $("stepSum").textContent = "That STEP is too big. Export only the tube.";
         return;
       }
       const reader = new FileReader();
@@ -1067,9 +1164,6 @@ var StepCam = (() => {
     }
     const drop = $("drop");
     const stepFile = $("stepFile");
-    drop.addEventListener("click", (e) => {
-      if (e.target !== stepFile) stepFile.click();
-    });
     drop.addEventListener("dragover", (e) => { e.preventDefault(); drop.classList.add("over"); });
     drop.addEventListener("dragleave", () => drop.classList.remove("over"));
     drop.addEventListener("drop", (e) => {
@@ -1081,6 +1175,18 @@ var StepCam = (() => {
       loadStepFile(stepFile.files[0]);
       stepFile.value = "";
     });
+
+
+    function loadSample(url, name) {
+      $("stepSum").textContent = "Reading " + name + "…";
+      fetch(url).then((r) => {
+        if (!r.ok) throw new Error("Could not fetch " + name);
+        return r.text();
+      }).then((text) => applyStep(StepCam.parseTubeStep(text, name)))
+        .catch((err) => { $("stepSum").textContent = err.message || String(err); });
+    }
+    $("btnHead").addEventListener("click", () => loadSample("./parts/head-bar.step", "head bar.step"));
+    $("btnBack").addEventListener("click", () => loadSample("./parts/back-angle-bar.step", "back angle bar1.step"));
 
     syncEnds();
     updateMmLabels();
