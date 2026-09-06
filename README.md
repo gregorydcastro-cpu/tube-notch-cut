@@ -1,12 +1,10 @@
 # Step File Tube Notcher
 
-GlineRacing shop tool for MASSO G3 plasma rotary. Drop a STEP-measured tube (preloaded: cage24 back angle bar) and cut so the ID sits on the parent OD.
+Drop a round-tube STEP. Get MASSO G3 plasma rotary G-code. Torch follows the tube ID so it sits on the parent OD.
 
 ## Grab it for the store
 
 File: `index.html` in this repo.
-
-jsDelivr:
 
 https://cdn.jsdelivr.net/gh/gregorydcastro-cpu/tube-notch-cut@main/index.html
 
@@ -33,11 +31,9 @@ https://gregorydcastro-cpu.github.io/tube-notch-cut/
 6. Add a link: **Step File Tube Notcher** → that page.
 7. Save the menu.
 
-If jsDelivr still shows an old file after an update, add `?v=2` to the iframe `src`.
+## How to use
 
-## On the machine
-
-- Tool **T112** plasma (not T111)
-- Zero the far end: seam = A0, Y0
-- Chuck is End 2, negative Y
-- Cut far end first so the pipe does not drop
+1. Drop the STEP of the round tube you want to cut (not the whole chassis).
+2. Check OD, wall, length, and the pipes each end sits on.
+3. If STEP parent is 1.528 and the chassis tube is 1.5, type 1.5.
+4. Download .nc. MASSO: T112, zero far end at Y0, seam A0, chuck is End 2. Cut far end first.

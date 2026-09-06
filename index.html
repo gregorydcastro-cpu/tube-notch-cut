@@ -107,6 +107,19 @@
       text-transform: uppercase;
       color: var(--text);
     }
+
+    .howto { background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 12px 12px 8px; margin: 0 0 14px; }
+    .howto h2 { margin: 0 0 8px; }
+    .howto ol { margin: 0; padding: 0 0 4px 18px; color: var(--text); font-size: 13px; line-height: 1.45; }
+    .howto li { margin: 0 0 6px; }
+    .drop {
+      display: block; cursor: pointer; text-align: center;
+      border: 1px dashed var(--line); border-radius: 8px;
+      padding: 14px 10px; margin: 0 0 16px; background: #101318;
+    }
+    .drop:hover, .drop.over { border-color: var(--accent); background: #1a140e; }
+    .drop strong { display: block; margin: 4px 0; }
+    .step-sum { font-size: 12px; color: var(--accent-2); margin: 0 0 12px; min-height: 1.2em; }
     input:disabled, select:disabled { opacity: 0.45; }
     .hidden { display: none !important; }
   </style>
@@ -124,6 +137,22 @@
   </header>
   <div class="wrap">
     <section class="form-col">
+      <div class="howto">
+        <h2>How to use</h2>
+        <ol>
+          <li>Drop the STEP of the <b>round tube you want to cut</b>. Not the whole chassis — just that bar.</li>
+          <li>The notcher reads OD, wall, length, angle, and the OD of the two pipes each end sits on. G-code builds itself.</li>
+          <li>Glance at the numbers. If the chassis tube is 1.5 in and STEP says 1.528, type 1.5 in “Sits on pipe OD”.</li>
+          <li>Download .nc. MASSO: T112, zero the far end (End 1) at Y0, seam is A0. Chuck is End 2. Cut far end first so the pipe does not drop.</li>
+        </ol>
+      </div>
+      <label class="drop" id="drop">
+        <input id="stepFile" type="file" accept=".step,.stp,.STEP,.STP" hidden />
+        <span class="brand">STEP file</span>
+        <strong>Drop a .step here, or tap to pick</strong>
+        <span class="hint">Reads the tube and writes G-code. Preloaded: back angle bar.</span>
+      </label>
+      <p class="step-sum" id="stepSum">Preloaded from back angle bar1.step — 1.5 in × 0.083 wall, sits on 1.5 in both ends at 76.45°, 29.873 in reference-to-reference.</p>
       <h2>Name of cut</h2>
       <div class="field">
         <label for="cutName">Name</label>
@@ -306,6 +335,312 @@
   </div>
 
   <script>
+"use strict";
+var StepCam = (() => {
+  var __defProp = Object.defineProperty;
+  var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+  var __getOwnPropNames = Object.getOwnPropertyNames;
+  var __hasOwnProp = Object.prototype.hasOwnProperty;
+  var __export = (target, all) => {
+    for (var name in all)
+      __defProp(target, name, { get: all[name], enumerable: true });
+  };
+  var __copyProps = (to, from, except, desc) => {
+    if (from && typeof from === "object" || typeof from === "function") {
+      for (let key of __getOwnPropNames(from))
+        if (!__hasOwnProp.call(to, key) && key !== except)
+          __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+    }
+    return to;
+  };
+  var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
+
+  // src/lib/cam/step.ts
+  var step_exports = {};
+  __export(step_exports, {
+    jobFromStep: () => jobFromStep,
+    parseTubeStep: () => parseTubeStep
+  });
+
+  // src/lib/cam/notch.ts
+  var IN = 25.4;
+  var CAD = {
+    file: "back angle bar1.step",
+    product: "back angle bar",
+    cage: "gline cage24 fishmouth",
+    material: "Steel",
+    density: 7850,
+    odMm: 38.1,
+    idMm: 33.8836,
+    wallMm: 2.1082,
+    parentCopeMm: 38.8,
+    angleDeg: 76.45,
+    ccMm: 758.778
+  };
+  var BACK_ANGLE_BAR = {
+    name: "back-angle-bar",
+    childOdIn: 1.5,
+    wallIn: 0.083,
+    lengthIn: +(CAD.ccMm / IN).toFixed(4),
+    lengthMode: "cc",
+    type1: "saddle",
+    type2: "saddle",
+    p1In: 1.5,
+    p2In: 1.5,
+    angle1: CAD.angleDeg,
+    angle2: CAD.angleDeg,
+    cut1: "wrap",
+    cut2: "wrap",
+    both: true,
+    mm: true,
+    step: 1,
+    feed: 385,
+    dwell: 200,
+    zeroMode: "end1",
+    tool: "T112",
+    retractZ: 30,
+    mOn: "M3",
+    mOff: "M5",
+    notes: "G-line cage24 back angle bar. Cut so the ID sits on the parent OD. Both ends wrap. Seam A0 = in-plane of the parent axes. Zero the far end (End 1) at Y0; chuck is End 2 at negative Y. Cut far end first so the pipe does not drop."
+  };
+
+  // src/lib/cam/step.ts
+  function nrm(v) {
+    const l = Math.hypot(v[0], v[1], v[2]) || 1;
+    return [v[0] / l, v[1] / l, v[2] / l];
+  }
+  function dot(a, b) {
+    return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  }
+  function sub(a, b) {
+    return [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+  }
+  function add(a, b) {
+    return [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+  }
+  function mul(v, s) {
+    return [v[0] * s, v[1] * s, v[2] * s];
+  }
+  function absDot(a, b) {
+    return Math.abs(dot(a, b));
+  }
+  function inch(mm, d = 4) {
+    return +(mm / IN).toFixed(d);
+  }
+  function parseEntities(raw) {
+    const text = raw.replace(/\r/g, "").replace(/\n\s+/g, " ");
+    const ents = /* @__PURE__ */ new Map();
+    const re = /#(\d+)\s*=\s*([A-Z0-9_]+)\s*\(/g;
+    let m;
+    while (m = re.exec(text)) {
+      const id = +m[1];
+      const type = m[2];
+      let i = m.index + m[0].length;
+      let depth = 1;
+      let inStr = false;
+      while (i < text.length && depth > 0) {
+        const c = text[i];
+        if (inStr) {
+          if (c === "'") inStr = false;
+        } else if (c === "'") inStr = true;
+        else if (c === "(") depth++;
+        else if (c === ")") depth--;
+        i++;
+      }
+      ents.set(id, { type, args: text.slice(m.index + m[0].length, i - 1) });
+    }
+    return ents;
+  }
+  function refs(args) {
+    return [...args.matchAll(/#(\d+)/g)].map((x) => +x[1]);
+  }
+  function nums(args) {
+    return [
+      ...args.matchAll(/[-+]?(?:\d+\.\d*|\.\d+|\d+)(?:E[-+]?\d+)?/gi)
+    ].map((x) => parseFloat(x[0]));
+  }
+  function quoted(args) {
+    return [...args.matchAll(/'([^']*)'/g)].map((x) => x[1]).filter(Boolean);
+  }
+  function vecOf(ents, id) {
+    const e = ents.get(id);
+    if (!e) return [0, 0, 0];
+    const n = nums(e.args);
+    return [n[0] || 0, n[1] || 0, n[2] || 0];
+  }
+  function closestS(C, ca, P0, pa) {
+    const w = sub(C, P0);
+    const d = dot(ca, pa);
+    const den = 1 - d * d;
+    const b0 = -dot(w, ca);
+    const b1 = -dot(w, pa);
+    if (Math.abs(den) < 1e-12) return 0;
+    return (b0 - d * b1) / den;
+  }
+  function axisDist(o1, a1, o2, a2) {
+    const c = [
+      a1[1] * a2[2] - a1[2] * a2[1],
+      a1[2] * a2[0] - a1[0] * a2[2],
+      a1[0] * a2[1] - a1[1] * a2[0]
+    ];
+    const cl = Math.hypot(c[0], c[1], c[2]);
+    if (cl < 1e-8) {
+      const w = sub(o2, o1);
+      const t = dot(w, a1);
+      const p = add(o1, mul(a1, t));
+      return Math.hypot(...sub(o2, p));
+    }
+    return Math.abs(dot(sub(o2, o1), c)) / cl;
+  }
+  function parseTubeStep(text, fileName) {
+    const warnings = [];
+    const ents = parseEntities(text);
+    const cyls = [];
+    for (const [, e] of ents) {
+      if (e.type !== "CYLINDRICAL_SURFACE") continue;
+      const rfs = refs(e.args);
+      const r = nums(e.args).at(-1);
+      if (!rfs.length || r == null || !(r > 0.4)) continue;
+      const ax = ents.get(rfs[0]);
+      if (!ax) continue;
+      const ar = refs(ax.args);
+      if (ar.length < 2) continue;
+      cyls.push({ r, o: vecOf(ents, ar[0]), a: nrm(vecOf(ents, ar[1])) });
+    }
+    if (cyls.length < 1) {
+      throw new Error(
+        "No round tubes in that STEP. Export a coped round pipe (cylinders for the tube and the pipes it sits on)."
+      );
+    }
+    const used = /* @__PURE__ */ new Set();
+    const clusters = [];
+    for (let i = 0; i < cyls.length; i++) {
+      if (used.has(i)) continue;
+      const group = [cyls[i]];
+      used.add(i);
+      for (let j = i + 1; j < cyls.length; j++) {
+        if (used.has(j)) continue;
+        if (absDot(cyls[i].a, cyls[j].a) < 0.999) continue;
+        if (axisDist(cyls[i].o, cyls[i].a, cyls[j].o, cyls[j].a) > 0.8) continue;
+        group.push(cyls[j]);
+        used.add(j);
+      }
+      clusters.push(group);
+    }
+    clusters.sort((a, b) => Math.max(...b.map((c) => c.r)) - Math.max(...a.map((c) => c.r)));
+    let child = clusters.find((g) => {
+      const rs = [...new Set(g.map((c) => +c.r.toFixed(3)))];
+      return rs.length >= 2;
+    });
+    if (!child) {
+      child = clusters[0];
+      warnings.push("No inner wall in the STEP \u2014 wall thickness was guessed.");
+    }
+    const childRs = [...new Set(child.map((c) => c.r))].sort((a, b) => b - a);
+    const odMm = childRs[0] * 2;
+    const idMm = childRs.length > 1 ? childRs[1] * 2 : odMm - 2 * 2.1082;
+    const wallMm = (odMm - idMm) / 2;
+    const childO = child[0].o;
+    const childA = child[0].a;
+    const parents = clusters.filter((g) => g !== child);
+    const parentEnds = [];
+    for (const g of parents) {
+      const r = Math.max(...g.map((c) => c.r));
+      const a = g[0].a;
+      const o = g[0].o;
+      const ang = Math.acos(Math.min(1, absDot(childA, a))) * (180 / Math.PI);
+      if (ang < 8) continue;
+      const s = closestS(childO, childA, o, a);
+      parentEnds.push({ r, angle: +ang.toFixed(2), s });
+    }
+    parentEnds.sort((a, b) => a.s - b.s);
+    const ends = [];
+    for (const p of parentEnds) {
+      const last = ends[ends.length - 1];
+      if (last && Math.abs(p.s - last.s) < 2) {
+        if (p.r > last.r) ends[ends.length - 1] = p;
+      } else ends.push(p);
+    }
+    const e1 = ends[0];
+    const e2 = ends.length > 1 ? ends[ends.length - 1] : void 0;
+    const type1 = e1 ? "saddle" : "flush";
+    const type2 = e2 ? "saddle" : "flush";
+    const p1In = e1 ? inch(e1.r * 2) : 0;
+    const p2In = e2 ? inch(e2.r * 2) : e1 ? inch(e1.r * 2) : 0;
+    const angle1 = e1 ? e1.angle : 90;
+    const angle2 = e2 ? e2.angle : angle1;
+    const lengthMm = e1 && e2 ? Math.abs(e2.s - e1.s) : 0;
+    if (!e1) warnings.push("No parent pipe at End 1 \u2014 treating as a square cut.");
+    if (!e2) warnings.push("No parent pipe at End 2 \u2014 treating as a square cut.");
+    const both = type1 === type2 && Math.abs(p1In - p2In) < 0.02 && Math.abs(angle1 - angle2) < 0.2;
+    let name = fileName.replace(/\.(step|stp)$/i, "").replace(/[_-]+/g, " ");
+    const productNames = [];
+    for (const e of ents.values()) {
+      if (e.type !== "PRODUCT") continue;
+      for (const n of quoted(e.args)) {
+        if (n && n !== "FreeCAD Model" && n.length > 1 && n.length < 80) {
+          productNames.push(n);
+        }
+      }
+    }
+    const fileKey = fileName.toLowerCase().replace(/\.(step|stp)$/i, "");
+    const named = productNames.find((n) => fileKey.includes(n.toLowerCase().slice(0, 8))) || productNames.find((n) => !/coped|fishmouth|cage/i.test(n)) || productNames[0];
+    if (named) name = named;
+    const childOdIn = inch(odMm);
+    const wallIn = inch(wallMm);
+    const lengthIn = inch(lengthMm);
+    const wrap1 = type1 === "saddle" && p1In + 1e-6 >= childOdIn ? "wrap" : type1 === "saddle" ? "auto" : "auto";
+    const wrap2 = type2 === "saddle" && p2In + 1e-6 >= childOdIn ? "wrap" : type2 === "saddle" ? "auto" : "auto";
+    const summary = [
+      `${childOdIn} in OD \xD7 ${wallIn} in wall`,
+      e1 ? `End 1 sits on ${p1In} in @ ${angle1}\xB0` : "End 1 square cut",
+      e2 ? `End 2 sits on ${p2In} in @ ${angle2}\xB0` : "End 2 square cut",
+      lengthMm ? `${lengthIn} in reference-to-reference` : ""
+    ].filter(Boolean).join(" \xB7 ");
+    const notes = `From ${fileName}. Cut so the ID sits on the parent OD. Zero End 1 at Y0; chuck is End 2, negative Y. Cut far end first.`;
+    return {
+      name: name.replace(/\s+/g, " ").trim() || "tube",
+      file: fileName,
+      childOdIn,
+      wallIn,
+      lengthIn,
+      p1In,
+      p2In,
+      angle1,
+      angle2,
+      type1,
+      type2,
+      cut1: wrap1,
+      cut2: wrap2,
+      both,
+      notes,
+      summary,
+      warnings
+    };
+  }
+  function jobFromStep(read, machine) {
+    return {
+      name: read.name.replace(/[^\w.\- ]+/g, "").replace(/\s+/g, "-").toLowerCase(),
+      childOdIn: read.childOdIn,
+      wallIn: read.wallIn,
+      lengthIn: read.lengthIn,
+      lengthMode: "cc",
+      type1: read.type1,
+      type2: read.type2,
+      p1In: read.p1In,
+      p2In: read.p2In,
+      angle1: read.angle1,
+      angle2: read.angle2,
+      cut1: read.cut1,
+      cut2: read.cut2,
+      both: read.both,
+      notes: read.notes,
+      ...machine
+    };
+  }
+  return __toCommonJS(step_exports);
+})();
+
     const IN = 25.4;
     const $ = (id) => document.getElementById(id);
 
@@ -689,6 +1024,62 @@
     ["childOd","wall","p1","p2","span","angle1","angle2","type1","type2","cut1","cut2","lengthMode","stepDeg","bothEnds","mmOut","zeroMode","feed","dwell","tool","retractZ","cutName","notes"].forEach((id) => {
       $(id).addEventListener("input", () => { syncEnds(); updateMmLabels(); });
       $(id).addEventListener("change", generate);
+    });
+
+
+    function applyStep(read) {
+      $("cutName").value = (read.name || "tube").replace(/[^\w.\- ]+/g, "").replace(/\s+/g, "-").toLowerCase();
+      $("childOd").value = read.childOdIn;
+      $("wall").value = read.wallIn;
+      $("span").value = read.lengthIn;
+      $("lengthMode").value = "cc";
+      $("type1").value = read.type1;
+      $("type2").value = read.type2;
+      $("p1").value = read.p1In;
+      $("p2").value = read.p2In;
+      $("angle1").value = read.angle1;
+      $("angle2").value = read.angle2;
+      $("cut1").value = read.cut1;
+      $("cut2").value = read.cut2;
+      $("bothEnds").checked = read.both;
+      $("notes").value = read.notes;
+      $("stepSum").textContent = read.summary + (read.warnings.length ? " — " + read.warnings.join(" ") : "");
+      syncEnds();
+      updateMmLabels();
+      generate();
+    }
+    function loadStepFile(file) {
+      if (!file) return;
+      if (!/\.(step|stp)$/i.test(file.name)) {
+        $("stepSum").textContent = "Use a .step or .stp file.";
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          const read = StepCam.parseTubeStep(String(reader.result), file.name);
+          applyStep(read);
+        } catch (err) {
+          $("stepSum").textContent = err && err.message ? err.message : "Could not read that STEP.";
+        }
+      };
+      reader.readAsText(file);
+    }
+    const drop = $("drop");
+    const stepFile = $("stepFile");
+    drop.addEventListener("click", (e) => {
+      if (e.target !== stepFile) stepFile.click();
+    });
+    drop.addEventListener("dragover", (e) => { e.preventDefault(); drop.classList.add("over"); });
+    drop.addEventListener("dragleave", () => drop.classList.remove("over"));
+    drop.addEventListener("drop", (e) => {
+      e.preventDefault();
+      drop.classList.remove("over");
+      loadStepFile(e.dataTransfer.files[0]);
+    });
+    stepFile.addEventListener("change", () => {
+      loadStepFile(stepFile.files[0]);
+      stepFile.value = "";
     });
 
     syncEnds();
