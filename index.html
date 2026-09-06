@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>GlineRacing · Tube Notch</title>
+  <title>GlineRacing · Step File Tube Notcher</title>
   <style>
     :root {
       --bg: #121418;
@@ -114,7 +114,7 @@
 <body>
   <header>
     <p class="brand"><a href="https://glineracing.store/" target="_top" rel="noopener">GlineRacing</a> · More · Shop tools</p>
-    <h1>Tube Notch</h1>
+    <h1>Step File Tube Notcher</h1>
     <p>MASSO G3 plasma rotary. Cut so the ID sits on the parent OD. Zero the far end (End 1): seam is A0 and Y0. End 2 is negative Y at the chuck. Cut far end first so the pipe does not drop. Pierce on the path — no lead-in or lead-out. Preloaded: cage24 back angle bar.</p>
     <div class="btns">
       <button type="button" id="btnGenTop">Generate G-code</button>
@@ -518,7 +518,7 @@
       const lines = [];
       const push = (s) => lines.push(s);
       push("%");
-      push("(Tube Notch/cut)");
+      push("(Step File Tube Notcher)");
       push("(Name of cut: " + p.name + ")");
       push("(GlineRacing · glineracing.store · More tab)");
       push("(Source CAD: back angle bar1.step — gline cage24 fishmouth)");
