@@ -111,7 +111,7 @@
 <body>
   <header>
     <h1>Tube Notch/cut</h1>
-    <p>Download this file and open it in Chrome or Edge. Zero on the far end (End 1): jog there, touch off, seam dot is A0 and Y0. End 2 is negative Y at the chuck. Cut the far end first so the pipe does not drop. Each end is independently a saddle (wrap onto a parent pipe) or a flush square cut. No lead-in or lead-out — pierce on the path.</p>
+    <p>Zero the far end: weld seam is A0, pipe end is Y0. <b>Single crotch notch</b> = one saddle at Y0. You measure center-to-center or end-to-end, flip the pipe, line the weld seam, zero, run it again for the other end. Unchecked = both ends in one setup if it fits the table.</p>
     <div class="btns">
       <button type="button" id="btnGenTop">Generate G-code</button>
       <button type="button" class="secondary" id="btnCopyTop">Copy</button>
@@ -163,8 +163,11 @@
           <div class="hint">Last bar was 9/16 short with notches in the right spots. Extra goes in the span.</div>
         </div>
       </div>
+      <label class="check"><input id="bothEnds" type="checkbox" /> Both ends the same?</label>
       <label class="check"><input id="mmOut" type="checkbox" checked /> G-code in millimeters (G21) — keep this on for MASSO</label>
-      <label class="check"><input id="flip2" type="checkbox" checked /> Flip End 2 notch 180° (A keeps going forward — no rewind to 0)</label>
+      <label class="check"><input id="flip2" type="checkbox" checked /> Flip End 2 notch 180° vs the weld seam</label>
+      <label class="check"><input id="singleNotch" type="checkbox" /> Single crotch notch — one end only. I'll measure and cut the other end.</label>
+      <div class="hint" style="margin:0 0 12px">Checked: one saddle at Y0, weld seam A0. You flip the pipe, line the seam, zero, run it again. Unchecked: both ends in one setup.</div>
 
       <h2>End 1 — far / free end (zero here, cut first)</h2>
       <div class="end-card">
@@ -200,8 +203,8 @@
         </div>
       </div>
 
-      <h2>End 2 — chuck end (negative Y, cut last so the good piece stays in the chuck)</h2>
-      <div class="end-card">
+      <h2 id="end2title">End 2 — chuck end (negative Y, cut last so the good piece stays in the chuck)</h2>
+      <div class="end-card" id="end2card">
         <h3 id="h2">End 2</h3>
         <div class="field">
           <label for="type2">This end is</label>
@@ -303,7 +306,7 @@
         <div class="stat"><span>End 1 / End 2</span><b id="sD1">—</b></div>
       </div>
       <canvas id="preview" width="900" height="220"></canvas>
-      <div class="legend">Orange = End 1 far/free end (Y0, cut first) · yellow = End 2 chuck (negative Y, cut last). Zero on the far end. A flush cut is a flat line. A saddle is the fishmouth curve.</div>
+      <div class="legend">Orange = End 1 · yellow = End 2. Single crotch notch: one saddle at Y0. You measure and cut the other end.</div>
       <h2>G-code</h2>
       <textarea id="gcode" spellcheck="false"></textarea>
     </section>
@@ -344,6 +347,11 @@
       $("saddle2").classList.toggle("hidden", $("type2").value !== "saddle");
       $("h1").textContent = $("type1").value === "flush" ? "Flush square cut" : "Saddle onto a pipe";
       $("h2").textContent = $("type2").value === "flush" ? "Flush square cut" : "Saddle onto a pipe";
+      const single = $("singleNotch") && $("singleNotch").checked;
+      if ($("end2card")) $("end2card").classList.toggle("hidden", !!single);
+      if ($("end2title")) $("end2title").classList.toggle("hidden", !!single);
+      if ($("flip2") && $("flip2").parentElement) $("flip2").parentElement.classList.toggle("hidden", !!single);
+      if ($("bothEnds") && $("bothEnds").parentElement) $("bothEnds").parentElement.classList.toggle("hidden", !!single);
     }
 
     function syncEnds() {
@@ -433,6 +441,7 @@
         both: $("bothEnds").checked,
         mm: $("mmOut").checked,
         flip2: $("flip2") ? $("flip2").checked : true,
+        singleNotch: $("singleNotch") ? $("singleNotch").checked : false,
         step: num("stepDeg"),
         feed: num("feed"),
         dwell: Math.round(num("dwell") || 0),
@@ -454,7 +463,8 @@
 
     function build(p) {
       const errors = [];
-      ["childOdIn","wallIn","lengthIn","step"].forEach((k) => {
+      const need = p.singleNotch ? ["childOdIn","wallIn","step"] : ["childOdIn","wallIn","lengthIn","step"];
+      need.forEach((k) => {
         if (!Number.isFinite(p[k]) || p[k] <= 0) errors.push("Check " + k + " — needs a positive number.");
       });
       if (p.wallIn * 2 >= p.childOdIn) errors.push("Wall is too thick for that OD.");
@@ -463,7 +473,7 @@
         if (!(p.p1In > 0) || !(p.angle1 > 0)) errors.push("End 1 saddle needs parent OD and angle.");
         if (p.angle1 < 15 || p.angle1 > 165) errors.push("End 1 angle should be 15° to 165°.");
       }
-      if (p.type2 === "saddle") {
+      if (!p.singleNotch && p.type2 === "saddle") {
         if (!(p.p2In > 0) || !(p.angle2 > 0)) errors.push("End 2 saddle needs parent OD and angle.");
         if (p.angle2 < 15 || p.angle2 > 165) errors.push("End 2 angle should be 15° to 165°.");
       }
@@ -473,13 +483,15 @@
       const Rp1 = (p.p1In / 2) * IN;
       const Rp2 = (p.p2In / 2) * IN;
       const wall = p.wallIn * IN;
-      const lengthMm = p.lengthIn * IN;
+      const lengthMm = (Number.isFinite(p.lengthIn) ? p.lengthIn : 0) * IN;
       const step = p.step;
 
       const prof1 = p.type1 === "flush" ? makeFlush(step) : makeSaddle(Rp1, Rc, p.angle1, step, p.cut1);
-      const prof2 = p.type2 === "flush" ? makeFlush(step) : makeSaddle(Rp2, Rc, p.angle2, step, p.cut2);
+      const prof2 = p.singleNotch
+        ? makeFlush(step)
+        : (p.type2 === "flush" ? makeFlush(step) : makeSaddle(Rp2, Rc, p.angle2, step, p.cut2));
       if (prof1.error) errors.push("End 1: " + prof1.error);
-      if (prof2.error) errors.push("End 2: " + prof2.error);
+      if (!p.singleNotch && prof2.error) errors.push("End 2: " + prof2.error);
       if (errors.length) return { errors };
 
       const off1 = prof1.offs;
@@ -497,17 +509,20 @@
       else span = lengthMm;
       span += Math.max(0, Number(p.addLenIn) || 0) * IN;
 
-      if (span < max1 + max2 - 1e-6) {
+      if (!p.singleNotch && span < max1 + max2 - 1e-6) {
         errors.push("That length is too short for these two cuts.");
         return { errors };
       }
 
-      // Y0 is End 1, the far/free end. Operator zeros there (seam = A0, Y0).
-      // Chuck is End 2 at negative Y. Saddle offset recedes into the tube.
-      // End 1: y = -offset (toward chuck). End 2: y = -span + offset (toward far end).
+      // End 1: y = -offset, horns at Y0 (zero the pipe end).
+      // One setup: End 2 at -span (chuck). Flip-pipe: End 2 is another Y0 cut after you reverse the tube.
       let y1 = off1.map((o) => -o);
-      let y2 = off2.map((o) => -span + o);
-      if (p.zeroMode !== "firstcut") {
+      let y2 = p.singleNotch ? off2.map((o) => -o) : off2.map((o) => -span + o);
+      if (p.singleNotch) {
+        const s1 = Math.max.apply(null, y1);
+        y1 = y1.map((y) => y - s1);
+        y2 = y1.slice();
+      } else if (p.zeroMode !== "firstcut") {
         const shift = Math.max.apply(null, y1);
         y1 = y1.map((y) => y - shift);
         y2 = y2.map((y) => y - shift);
@@ -520,6 +535,12 @@
         let k = 0, best = -1e99;
         const n = Math.max(1, ys.length - 1);
         for (let i = 0; i < n; i++) if (ys[i] > best) { best = ys[i]; k = i; }
+        return k;
+      }
+      function indexOfMin(ys) {
+        let k = 0, best = 1e99;
+        const n = Math.max(1, ys.length - 1);
+        for (let i = 0; i < n; i++) if (ys[i] < best) { best = ys[i]; k = i; }
         return k;
       }
       function rotateClosed(angles, ys, k) {
@@ -537,9 +558,10 @@
         return { angles: a, ys: y };
       }
       const horn = indexOfMax(y1);
-      const r1 = rotateClosed(a1, y1, horn);
-      const crotch = indexOfMax(y2);
-      const r2 = rotateClosed(a2, y2, crotch);
+      const crotch = indexOfMin(y1);
+      const r1 = rotateClosed(a1, y1, p.singleNotch ? crotch : horn);
+      const start2 = indexOfMax(y2);
+      const r2 = rotateClosed(a2, y2, start2);
       const a1Out = r1.angles;
       y1 = r1.ys;
       y2 = r2.ys;
@@ -564,8 +586,10 @@
       push("(Wall thickness: " + p.wallIn + " in / " + fmt(wall, 3) + " mm)");
       if (p.type1 === "flush") push("(End 1: flush square cut — no parent pipe)");
       else push("(End 1 parent OD: " + p.p1In + " in / " + fmt(p.p1In * IN, 3) + " mm @ " + p.angle1 + " deg, " + kindLabel(prof1.kind) + ")");
-      if (p.type2 === "flush") push("(End 2: flush square cut — no parent pipe)");
-      else push("(End 2 parent OD: " + p.p2In + " in / " + fmt(p.p2In * IN, 3) + " mm @ " + p.angle2 + " deg, " + kindLabel(prof2.kind) + ")");
+      if (!p.singleNotch) {
+        if (p.type2 === "flush") push("(End 2: flush square cut — no parent pipe)");
+        else push("(End 2 parent OD: " + p.p2In + " in / " + fmt(p.p2In * IN, 3) + " mm @ " + p.angle2 + " deg, " + kindLabel(prof2.kind) + ")");
+      }
       push("(Length entered: " + p.lengthIn + " in / " + fmt(lengthMm, 3) + " mm — " + (
         p.lengthMode === "longest" ? "finished longest" :
         p.lengthMode === "crown" ? "finished shortest" : "parent center to center"
@@ -577,8 +601,16 @@
       push("(Degrees of steps: " + step + ")");
       push("(Notes: " + (p.notes || "none") + ")");
       push("(Machine: MASSO G3 plasma rotary — A rotary degrees, Y along tube)");
-      push("(Y0: End 1 HORN at Y0. Zero the pipe end. Cycle start should NOT rapid off zero.)");
-      push("(Cut order: End 1 far first, then End 2 toward chuck so the pipe does not drop)");
+      if (p.singleNotch) {
+        push("(SINGLE CROTCH NOTCH — one end only)");
+        push("(Line WELD SEAM to A0. Zero the pipe END at Y0.)");
+        push("(Starts at the crotch / shortest, wraps out to the horns.)");
+        push("(Then you measure center-to-center or end-to-end, flip the pipe,");
+        push("(line the weld seam, zero the other end, run this again.)");
+      } else {
+        push("(Y0: End 1 HORN at Y0. Zero the pipe end. Cycle start should NOT rapid off zero.)");
+        push("(Cut order: End 1 far first, then End 2 toward chuck so the pipe does not drop)");
+      }
       push("(Pierce on path. No lead-in or lead-out.)");
       push("(Longest finished length: " + fmt(toOut(longest), dec) + " " + unit + ")");
       push("(Shortest finished length: " + fmt(toOut(shortest), dec) + " " + unit + ")");
@@ -612,11 +644,16 @@
         push(retractWord);
       }
       const a1Last = a1Out[a1Out.length - 1] || 0;
-      const a2Shift = a1Last + (p.flip2 ? 180 : 0) - (r2.angles[0] || 0);
-      const a2Out = r2.angles.map((a) => a + a2Shift);
-      push("(End 2 notch: " + (p.flip2 ? "FLIPPED +180 deg, A keeps going forward (no rewind to 0)" : "same clocking, A keeps going forward (no rewind to 0)") + ")");
+      let a2Out = r2.angles;
+      if (!p.singleNotch) {
+        const a2Shift = a1Last + (p.flip2 ? 180 : 0) - (r2.angles[0] || 0);
+        a2Out = r2.angles.map((a) => a + a2Shift);
+        push("(End 2 notch: " + (p.flip2 ? "FLIPPED +180 deg vs the weld seam" : "same clocking as End 1 vs the weld seam") + ")");
+      }
       cutEnd("END 1", a1Out, y1, prof1.kind, "first");
-      cutEnd("END 2", a2Out, y2, prof2.kind, "continue");
+      if (!p.singleNotch) {
+        cutEnd("END 2", a2Out, y2, prof2.kind, "continue");
+      }
       push("");
       push("M30");
       push("%");
@@ -625,7 +662,7 @@
         errors: [],
         gcode: lines.join("\n"),
         a1, a2, y1, y2, off1, off2, d1, d2, longest, shortest, span, unit, toOut, dec,
-        kind1: prof1.kind, kind2: prof2.kind
+        kind1: prof1.kind, kind2: p.singleNotch ? prof1.kind : prof2.kind, singleNotch: !!p.singleNotch
       };
     }
 
@@ -668,11 +705,12 @@
         ctx.stroke();
       }
       stroke(res.a1, res.off1, "#e08a2c");
-      stroke(res.a2, res.off2, "#f3b15a");
+      if (!res.singleNotch) stroke(res.a2, res.off2, "#f3b15a");
     }
 
     function generate() {
       updateMmLabels();
+      showSaddleFields();
       const res = build(collect());
       const status = $("status");
       if (res.errors.length) {
@@ -686,7 +724,9 @@
         drawPreview(null);
         return res;
       }
-      status.textContent = "Generated " + res.gcode.split("\n").length + " lines. End 1: " + kindLabel(res.kind1) + " · End 2: " + kindLabel(res.kind2) + ".";
+      status.textContent = res.singleNotch
+        ? ("Single crotch notch — " + kindLabel(res.kind1) + ". Measure, flip, run again for the other end.")
+        : ("Generated " + res.gcode.split("\n").length + " lines. End 1: " + kindLabel(res.kind1) + " · End 2: " + kindLabel(res.kind2) + ".");
       status.className = "ok";
       $("gcode").value = res.gcode;
       $("gcode").scrollTop = 0;
@@ -732,9 +772,11 @@
     $("btnGenTop").addEventListener("click", generate);
     $("btnCopyTop").addEventListener("click", copyGcode);
     $("btnDlTop").addEventListener("click", downloadNc);
-    ["childOd","wall","p1","p2","span","angle1","angle2","type1","type2","cut1","cut2","lengthMode","stepDeg","bothEnds","mmOut","flip2","addLen","zeroMode","feed","dwell","tool","retractZ","cutName","notes"].forEach((id) => {
-      $(id).addEventListener("input", () => { syncEnds(); updateMmLabels(); });
-      $(id).addEventListener("change", generate);
+    ["childOd","wall","p1","p2","span","angle1","angle2","type1","type2","cut1","cut2","lengthMode","stepDeg","bothEnds","mmOut","flip2","singleNotch","addLen","zeroMode","feed","dwell","tool","retractZ","cutName","notes"].forEach((id) => {
+      const el = $(id);
+      if (!el) return;
+      el.addEventListener("input", () => { syncEnds(); showSaddleFields(); updateMmLabels(); });
+      el.addEventListener("change", generate);
     });
 
     syncEnds();
