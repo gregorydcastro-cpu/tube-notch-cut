@@ -11,14 +11,14 @@ MASSO G3 plasma rotary. **Y0 is the horn at the pipe end.** Cycle start must not
 
 **Single crotch notch:** enter parent center-to-center (or a tape on the horns). The app tells you **how long to square-cut the stick**. One saddle at Y0, weld seam A0. Flip the pipe, line the seam, zero, run it again.
 
-**Stand-on (parent smaller than the tube):** fishmouth sits on the small parent, then a **straight cut at the horn / sand line** the rest of the way around so the scrap severs. Same on the other end if that parent is small too.
+**Stand-on (parent smaller than the tube):** fishmouth on **both sides** of the pipe (0° and 180°), with **straight sand-line cuts** on the two sides that miss the parent. Same on the other end if that parent is small too.
 
 Both start End 1 on the horn at Y0 (single crotch starts at the crotch), keep A moving forward (no rewind to 0), G21 first.
 
-Cache-bust: `?v=11`
+Cache-bust: `?v=12`
 
-- https://cdn.jsdelivr.net/gh/gregorydcastro-cpu/tube-notch-cut@main/index.html?v=11
-- https://cdn.jsdelivr.net/gh/gregorydcastro-cpu/tube-notch-cut@main/tube-notch-generator.html?v=11
+- https://cdn.jsdelivr.net/gh/gregorydcastro-cpu/tube-notch-cut@main/index.html?v=12
+- https://cdn.jsdelivr.net/gh/gregorydcastro-cpu/tube-notch-cut@main/tube-notch-generator.html?v=12
 
 Have Grokbot put these under **More** on glineracing.store.
 

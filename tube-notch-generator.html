@@ -195,7 +195,7 @@
             <label for="cut1">Saddle style</label>
             <select id="cut1">
               <option value="auto" selected>Auto</option>
-              <option value="stand">Stand-on: fishmouth + square cut around</option>
+              <option value="stand">Stand-on: fishmouth both sides + square sides</option>
               <option value="wrap">Full 360 wrap</option>
             </select>
             <div class="hint">Auto uses stand-on when the parent is smaller than the tube.</div>
@@ -230,7 +230,7 @@
             <select id="cut2">
               <option value="auto" selected>Auto</option>
               <option value="wrap">Full 360 wrap</option>
-              <option value="stand">Stand-on: fishmouth + square cut around</option>
+              <option value="stand">Stand-on: fishmouth both sides + square sides</option>
             </select>
           </div>
         </div>
@@ -355,7 +355,7 @@
       const s = Math.sin(th);
       const c = Math.cos(th);
       const inside = Rp * Rp - (Rc * s) * (Rc * s);
-      if (inside < -1e-9) return null;
+      if (inside < -1e-4) return null;
       const root = Math.sqrt(Math.max(0, inside));
       if (Math.abs(Math.sin(af)) < 1e-9) return null;
       if (Math.abs(angleDeg - 90) < 1e-9) return root;
@@ -415,24 +415,48 @@
       if (kind === "stand") {
         const ratio = Math.min(0.999999, Rp / Rc);
         const tmax = Math.asin(ratio) * 180 / Math.PI;
-        const raw = [];
-        for (let a = -tmax; a <= tmax + 1e-9; a = +(a + step).toFixed(8)) raw.push(Number(a.toFixed(6)));
-        if (raw[raw.length - 1] !== Number(tmax.toFixed(6))) raw.push(Number(tmax.toFixed(6)));
-        for (const a of raw) {
-          const o = offsetFromParent(a, Rp, Rc, angleDeg);
-          if (o === null) continue;
-          angles.push(a);
-          offs.push(o);
-        }
-        if (angles.length < 3) return { error: "Stand-on fishmouth did not produce a usable arc." };
-        const hornOff = offs[offs.length - 1];
-        const closeA = angles[0] + 360;
-        for (let a = +(tmax + step).toFixed(8); a < closeA - 1e-6; a = +(a + step).toFixed(8)) {
+        const pushPt = (a, o) => {
+          if (angles.length && Math.abs(angles[angles.length - 1] - a) < 1e-9) return;
           angles.push(Number(a.toFixed(6)));
-          offs.push(hornOff);
-        }
-        angles.push(Number(closeA.toFixed(6)));
-        offs.push(offs[0]);
+          offs.push(o);
+        };
+        const sampleArc = (from, to) => {
+          const pts = [];
+          for (let a = from; a <= to + 1e-9; a = +(a + step).toFixed(8)) {
+            const o = offsetFromParent(a, Rp, Rc, angleDeg);
+            if (o === null) continue;
+            pts.push({ a: Number(a.toFixed(6)), o: o });
+          }
+          const oEnd = offsetFromParent(to, Rp, Rc, angleDeg);
+          if (oEnd !== null) {
+            const endA = Number(to.toFixed(6));
+            if (!pts.length || Math.abs(pts[pts.length - 1].a - endA) > 1e-9) pts.push({ a: endA, o: oEnd });
+          }
+          return pts;
+        };
+        const sandTo = (targetA, targetO) => {
+          if (!angles.length) { pushPt(targetA, targetO); return; }
+          const fromA = angles[angles.length - 1];
+          const fromO = offs[offs.length - 1];
+          const span = targetA - fromA;
+          if (span <= 1e-9) return;
+          for (let a = +(fromA + step).toFixed(8); a < targetA - 1e-6; a = +(a + step).toFixed(8)) {
+            const t = (a - fromA) / span;
+            pushPt(Number(a.toFixed(6)), fromO + (targetO - fromO) * t);
+          }
+        };
+        const pushArc = (from, to) => {
+          const pts = sampleArc(from, to);
+          if (!pts.length) return;
+          sandTo(pts[0].a, pts[0].o);
+          for (const p of pts) pushPt(p.a, p.o);
+        };
+        pushArc(-tmax, tmax);
+        if (angles.length < 3) return { error: "Stand-on fishmouth did not produce a usable arc." };
+        pushArc(180 - tmax, 180 + tmax);
+        const closeA = angles[0] + 360;
+        sandTo(closeA, offs[0]);
+        pushPt(Number(closeA.toFixed(6)), offs[0]);
         return { kind, angles, offs, tmax };
       }
       for (let a = 0; a <= 360 + 1e-9; a = +(a + step).toFixed(8)) {
@@ -484,7 +508,7 @@
 
     function kindLabel(k) {
       if (k === "flush") return "flush square cut";
-      if (k === "stand") return "stand-on fishmouth + square remainder";
+      if (k === "stand") return "stand-on: both-side fishmouth + square sides";
       return "saddle wrap";
     }
 
@@ -640,8 +664,8 @@
       }
       if (prof1.kind === "stand" || prof2.kind === "stand") {
         push("(Stand-on: parent is smaller than this tube.)");
-        push("(Fishmouth sits on the small parent. Rest of the 360 is a STRAIGHT CUT");
-        push("(at the horn / sand line so the scrap severs. Same on the other end if it is stand-on.)");
+        push("(TWO fishmouths, 180 deg apart — notch on BOTH sides of the pipe.)");
+        push("(The two sides that miss the parent are a STRAIGHT CUT at the sand line.)");
       }
       push("(Pierce on path. No lead-in or lead-out.)");
       push("(Longest finished length: " + fmt(toOut(longest), dec) + " " + unit + ")");
