@@ -195,7 +195,7 @@
             <label for="cut1">Saddle style</label>
             <select id="cut1">
               <option value="auto" selected>Auto</option>
-              <option value="stand">Stand-on fishmouth (bottom only)</option>
+              <option value="stand">Stand-on: fishmouth + square cut around</option>
               <option value="wrap">Full 360 wrap</option>
             </select>
             <div class="hint">Auto uses stand-on when the parent is smaller than the tube.</div>
@@ -230,7 +230,7 @@
             <select id="cut2">
               <option value="auto" selected>Auto</option>
               <option value="wrap">Full 360 wrap</option>
-              <option value="stand">Stand-on fishmouth (bottom only)</option>
+              <option value="stand">Stand-on: fishmouth + square cut around</option>
             </select>
           </div>
         </div>
@@ -425,6 +425,14 @@
           offs.push(o);
         }
         if (angles.length < 3) return { error: "Stand-on fishmouth did not produce a usable arc." };
+        const hornOff = offs[offs.length - 1];
+        const closeA = angles[0] + 360;
+        for (let a = +(tmax + step).toFixed(8); a < closeA - 1e-6; a = +(a + step).toFixed(8)) {
+          angles.push(Number(a.toFixed(6)));
+          offs.push(hornOff);
+        }
+        angles.push(Number(closeA.toFixed(6)));
+        offs.push(offs[0]);
         return { kind, angles, offs, tmax };
       }
       for (let a = 0; a <= 360 + 1e-9; a = +(a + step).toFixed(8)) {
@@ -476,7 +484,7 @@
 
     function kindLabel(k) {
       if (k === "flush") return "flush square cut";
-      if (k === "stand") return "stand-on fishmouth";
+      if (k === "stand") return "stand-on fishmouth + square remainder";
       return "saddle wrap";
     }
 
@@ -630,6 +638,11 @@
         push("(Y0: End 1 HORN at Y0. Zero the pipe end. Cycle start should NOT rapid off zero.)");
         push("(Cut order: End 1 far first, then End 2 toward chuck so the pipe does not drop)");
       }
+      if (prof1.kind === "stand" || prof2.kind === "stand") {
+        push("(Stand-on: parent is smaller than this tube.)");
+        push("(Fishmouth sits on the small parent. Rest of the 360 is a STRAIGHT CUT");
+        push("(at the horn / sand line so the scrap severs. Same on the other end if it is stand-on.)");
+      }
       push("(Pierce on path. No lead-in or lead-out.)");
       push("(Longest finished length: " + fmt(toOut(longest), dec) + " " + unit + ")");
       push("(Shortest finished length: " + fmt(toOut(shortest), dec) + " " + unit + ")");
@@ -644,7 +657,7 @@
 
       function cutEnd(label, angArr, yArr, kind, mode) {
         push("");
-        push("(" + label + " — " + kindLabel(kind) + (kind === "flush" || kind === "wrap" ? ", full 360 closed loop" : ", partial arc") + ")");
+        push("(" + label + " — " + kindLabel(kind) + (kind === "flush" || kind === "wrap" || kind === "stand" ? ", full 360 closed loop" : ", partial arc") + ")");
         if (mode === "continue") {
           push("(Torch up. Move Y to End 2 crotch — shortest, not the horn.)");
           push("(Do NOT re-zero Y here. Same Y0 as End 1. Touch off Z only.)");
