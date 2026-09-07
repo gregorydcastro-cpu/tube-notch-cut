@@ -609,8 +609,8 @@
       const horn = indexOfMax(y1);
       const crotch = indexOfMin(y1);
       const r1 = rotateClosed(a1, y1, p.singleNotch ? crotch : horn);
-      const start2 = indexOfMax(y2);
-      const r2 = rotateClosed(a2, y2, start2);
+      // Same start index as End 1 so both notches face the same way (not 90° out).
+      const r2 = rotateClosed(a2, y2, p.singleNotch ? crotch : horn);
       const a1Out = r1.angles;
       y1 = r1.ys;
       y2 = r2.ys;
@@ -683,7 +683,7 @@
         push("");
         push("(" + label + " — " + kindLabel(kind) + (kind === "flush" || kind === "wrap" || kind === "stand" ? ", full 360 closed loop" : ", partial arc") + ")");
         if (mode === "continue") {
-          push("(Torch up. Move Y to End 2 crotch — shortest, not the horn.)");
+          push("(Torch up. Move Y to End 2. Same clocking as End 1.)");
           push("(Do NOT re-zero Y here. Same Y0 as End 1. Touch off Z only.)");
           push("G0 " + axisY(yArr[0]));
           const already = Math.abs(angArr[0] - (a1Last || 0)) < 0.05;
