@@ -163,7 +163,7 @@
           <div class="hint">Last bar was 9/16 short with notches in the right spots. Extra goes in the span.</div>
         </div>
       </div>
-      <label class="check"><input id="bothEnds" type="checkbox" /> Both ends the same?</label>
+      <label class="check"><input id="bothEnds" type="checkbox" checked /> Same crotch on the other end (flip and run this again)</label>
       <label class="check"><input id="mmOut" type="checkbox" checked /> G-code in millimeters (G21) — keep this on for MASSO</label>
       <label class="check"><input id="flip2" type="checkbox" checked /> Flip End 2 notch 180° vs the weld seam</label>
       <label class="check"><input id="singleNotch" type="checkbox" /> Single crotch notch — one end only. I'll measure and cut the other end.</label>
@@ -298,10 +298,18 @@
     </section>
 
     <section class="out-col">
+
+      <div id="sawCard" class="hidden" style="background:var(--panel-2);border:1px solid var(--accent);border-radius:8px;padding:14px 16px;margin:0 0 16px">
+        <div style="font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--accent-2);margin-bottom:6px">Cut the pipe to</div>
+        <div id="sawFrac" style="font-family:var(--mono);font-size:40px;line-height:1;color:var(--accent-2);font-weight:600">—</div>
+        <div id="sawExact" style="font-family:var(--mono);margin-top:8px;font-size:14px">—</div>
+        <p style="margin:10px 0 0;font-size:13px">Square both ends to that length. Then notch. Horns stay on those squared ends — the crotches eat in from there.</p>
+        <div id="sawBreak" style="margin-top:10px;font-family:var(--mono);font-size:11px;color:var(--muted)"></div>
+      </div>
       <h2>Setup check</h2>
       <div class="stats">
         <div class="stat"><span>Reference span</span><b id="sCC">—</b></div>
-        <div class="stat"><span>Longest finished length</span><b id="sLong">—</b></div>
+        <div class="stat"><span>Saw the pipe to (horns)</span><b id="sLong">—</b></div>
         <div class="stat"><span>Shortest finished length</span><b id="sShort">—</b></div>
         <div class="stat"><span>End 1 / End 2</span><b id="sD1">—</b></div>
       </div>
@@ -321,6 +329,18 @@
       return Number.isFinite(v) ? v : NaN;
     }
     function fmt(n, d) { return Number(n).toFixed(d); }
+    function formatInchFraction(inches) {
+      const sign = inches < 0 ? "-" : "";
+      const n = Math.abs(inches);
+      const sixteenths = Math.round(n * 16);
+      const whole = Math.floor(sixteenths / 16);
+      let num = sixteenths % 16;
+      if (num === 0) return sign + whole + " in";
+      let a = num, b = 16;
+      while (b) { const x = a % b; a = b; b = x; }
+      num /= a; const den = 16 / a;
+      return sign + (whole ? whole + " " : "") + num + "/" + den + " in";
+    }
 
     function updateMmLabels() {
       [["childOd","childOdMm"],["wall","wallMm"],["p1","p1Mm"],["p2","p2Mm"],["span","spanMm"]].forEach(([src, dst]) => {
@@ -351,7 +371,6 @@
       if ($("end2card")) $("end2card").classList.toggle("hidden", !!single);
       if ($("end2title")) $("end2title").classList.toggle("hidden", !!single);
       if ($("flip2") && $("flip2").parentElement) $("flip2").parentElement.classList.toggle("hidden", !!single);
-      if ($("bothEnds") && $("bothEnds").parentElement) $("bothEnds").parentElement.classList.toggle("hidden", !!single);
     }
 
     function syncEnds() {
@@ -463,7 +482,7 @@
 
     function build(p) {
       const errors = [];
-      const need = p.singleNotch ? ["childOdIn","wallIn","step"] : ["childOdIn","wallIn","lengthIn","step"];
+      const need = ["childOdIn","wallIn","lengthIn","step"];
       need.forEach((k) => {
         if (!Number.isFinite(p[k]) || p[k] <= 0) errors.push("Check " + k + " — needs a positive number.");
       });
@@ -473,7 +492,7 @@
         if (!(p.p1In > 0) || !(p.angle1 > 0)) errors.push("End 1 saddle needs parent OD and angle.");
         if (p.angle1 < 15 || p.angle1 > 165) errors.push("End 1 angle should be 15° to 165°.");
       }
-      if (!p.singleNotch && p.type2 === "saddle") {
+      if (!(p.singleNotch && p.both) && p.type2 === "saddle") {
         if (!(p.p2In > 0) || !(p.angle2 > 0)) errors.push("End 2 saddle needs parent OD and angle.");
         if (p.angle2 < 15 || p.angle2 > 165) errors.push("End 2 angle should be 15° to 165°.");
       }
@@ -487,9 +506,7 @@
       const step = p.step;
 
       const prof1 = p.type1 === "flush" ? makeFlush(step) : makeSaddle(Rp1, Rc, p.angle1, step, p.cut1);
-      const prof2 = p.singleNotch
-        ? makeFlush(step)
-        : (p.type2 === "flush" ? makeFlush(step) : makeSaddle(Rp2, Rc, p.angle2, step, p.cut2));
+      const prof2 = p.type2 === "flush" ? makeFlush(step) : makeSaddle(Rp2, Rc, p.angle2, step, p.cut2);
       if (prof1.error) errors.push("End 1: " + prof1.error);
       if (!p.singleNotch && prof2.error) errors.push("End 2: " + prof2.error);
       if (errors.length) return { errors };
@@ -594,8 +611,10 @@
         p.lengthMode === "longest" ? "finished longest" :
         p.lengthMode === "crown" ? "finished shortest" : "parent center to center"
       ) + ")");
-      push("(Reference span: " + fmt(span / IN, 4) + " in / " + fmt(span, 3) + " mm)");
-      push("(Length add-on: " + (p.addLenIn || 0) + " in — last bar 9/16 short, extra in the span)");
+      if ((p.addLenIn || 0) > 0) push("(Length add-on: " + (p.addLenIn || 0) + " in — extra in the span)");
+      push("(Parent center to center: " + fmt(span / IN, 4) + " in / " + fmt(span, 3) + " mm)");
+      push("(SAW THE PIPE TO: " + formatInchFraction(longest / IN) + "  (" + fmt(longest / IN, 4) + " in / " + fmt(longest, 3) + " mm)  horn-to-horn)");
+      push("(Crotch to crotch after both notches: " + fmt(shortest / IN, 4) + " in / " + fmt(shortest, 3) + " mm)");
       push("(Both ends the same: " + (p.both ? "Yes" : "No") + ")");
       push("(G-code units: " + unit + ")");
       push("(Degrees of steps: " + step + ")");
@@ -603,10 +622,10 @@
       push("(Machine: MASSO G3 plasma rotary — A rotary degrees, Y along tube)");
       if (p.singleNotch) {
         push("(SINGLE CROTCH NOTCH — one end only)");
-        push("(Line WELD SEAM to A0. Zero the pipe END at Y0.)");
-        push("(Starts at the crotch / shortest, wraps out to the horns.)");
-        push("(Then you measure center-to-center or end-to-end, flip the pipe,");
-        push("(line the weld seam, zero the other end, run this again.)");
+        push("(1. Square-cut the stick to the SAW length above.)");
+        push("(2. Line WELD SEAM to A0. Zero the pipe END at Y0.)");
+        push("(3. Starts at the crotch / shortest, wraps out to the horns at Y0.)");
+        push("(4. Flip the pipe, line the weld seam, zero the other end, run again.)");
       } else {
         push("(Y0: End 1 HORN at Y0. Zero the pipe end. Cycle start should NOT rapid off zero.)");
         push("(Cut order: End 1 far first, then End 2 toward chuck so the pipe does not drop)");
@@ -725,10 +744,19 @@
         return res;
       }
       status.textContent = res.singleNotch
-        ? ("Single crotch notch — " + kindLabel(res.kind1) + ". Measure, flip, run again for the other end.")
+        ? ("Saw to " + formatInchFraction(res.longest / IN) + ". Then " + kindLabel(res.kind1) + " this end, flip, run again.")
         : ("Generated " + res.gcode.split("\n").length + " lines. End 1: " + kindLabel(res.kind1) + " · End 2: " + kindLabel(res.kind2) + ".");
       status.className = "ok";
       $("gcode").value = res.gcode;
+      const sawCard = $("sawCard");
+      if (sawCard) {
+        if (res.singleNotch) {
+          sawCard.classList.remove("hidden");
+          $("sawFrac").textContent = formatInchFraction(res.longest / IN).replace(" in", "") + " in";
+          $("sawExact").textContent = fmt(res.longest / IN, 4) + " in · " + fmt(res.longest, 2) + " mm";
+          $("sawBreak").textContent = "Parent centers " + fmt(res.span / IN, 4) + " in · crotch " + fmt(res.shortest / IN, 4) + " in";
+        } else sawCard.classList.add("hidden");
+      }
       $("gcode").scrollTop = 0;
       $("sCC").textContent = fmt(res.toOut(res.span), res.dec) + " " + res.unit;
       $("sLong").textContent = fmt(res.toOut(res.longest), res.dec) + " " + res.unit;
