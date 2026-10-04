@@ -30,7 +30,9 @@
       top: 0;
       z-index: 5;
     }
-    header h1 { margin: 0 0 6px; font-size: 22px; letter-spacing: 0.04em; text-transform: uppercase; }
+    .title-row { display: flex; align-items: baseline; flex-wrap: wrap; gap: 10px; margin: 0 0 6px; }
+    header h1 { margin: 0; font-size: 22px; letter-spacing: 0.04em; text-transform: uppercase; }
+    .build-stamp { color: var(--accent-2); font-size: 13px; font-weight: 700; letter-spacing: 0.04em; }
     header p { margin: 0 0 10px; color: var(--muted); font-size: 13px; }
     header .btns { margin: 0; }
     .wrap { display: grid; grid-template-columns: 420px 1fr; min-height: calc(100vh - 78px); }
@@ -110,7 +112,10 @@
 </head>
 <body>
   <header>
-    <h1>Tube Notch/cut</h1>
+    <div class="title-row">
+      <h1>Tube Notch/cut</h1>
+      <span class="build-stamp">Build v13</span>
+    </div>
     <p>Zero the far end: weld seam is A0, pipe end is Y0. <b>Single crotch notch</b> = one saddle at Y0. You measure center-to-center or end-to-end, flip the pipe, line the weld seam, zero, run it again for the other end. Unchecked = both ends in one setup if it fits the table.</p>
     <div class="btns">
       <button type="button" id="btnGenTop">Generate G-code</button>
@@ -629,7 +634,7 @@
       push("%");
       push(p.mm ? "G21" : "G20");
       push(p.mm ? "(UNITS = MILLIMETERS — G21)" : "(UNITS = INCHES — G20)");
-      push("(Tube Notch/cut)");
+      push("(Tube Notch/cut — Build v13)");
       push("(Name of cut: " + p.name + ")");
       push("(Tube I'm cutting OD: " + p.childOdIn + " in / " + fmt(p.childOdIn * IN, 3) + " mm)");
       push("(Wall thickness: " + p.wallIn + " in / " + fmt(wall, 3) + " mm)");
